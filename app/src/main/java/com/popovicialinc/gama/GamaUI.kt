@@ -96,7 +96,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -125,7 +124,8 @@ fun GamaUI(
 ) {
     val ts = LocalTypeScale.current
     val strings = LocalStrings.current
-    val languageCode = LocalLanguageCode.current.value
+    val languageCodeState = LocalLanguageCode.current
+    val languageCode = languageCodeState.value
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
@@ -208,11 +208,17 @@ fun GamaUI(
     }
 
     var shizukuStatus by remember { mutableStateOf("Checking...") }
+    // Shevery exposes the same Shizuku client protocol. This only affects the
+    // label shown to the user; command execution stays on the upstream API.
+    val shizukuBackendName = remember {
+        ShizukuBackend.installed(context)?.displayName ?: "Shizuku"
+    }
     var showShizukuHelp by remember { mutableStateOf(false) }
     var shizukuHelpType by remember { mutableStateOf("") }
     var commandOutput by remember { mutableStateOf("") }
     // Default to OpenGL if no preference is saved
     var currentRenderer by remember { mutableStateOf(prefs.getString("last_renderer", "OpenGL") ?: "OpenGL") }
+    var lastRendererAction by remember { mutableStateOf(RendererActionHistory.read(prefs)) }
     // True from launch until Shizuku either confirms the renderer or we know Shizuku isn't ready
     var rendererLoading by remember { mutableStateOf(true) }
     var lastSwitchTime by remember { mutableStateOf(prefs.getLong("last_switch_time", 0L)) }
@@ -240,7 +246,7 @@ fun GamaUI(
     var rendererSwitching by remember { mutableStateOf(false) }
 
     // Renderer changes can happen outside this activity (QS tile, Tasker,
-    // widget, boot worker, or another privileged tool). Refresh on resume so
+    // boot worker, Quick Settings, or another privileged tool). Refresh on resume so
     // the visible state cannot remain stale for the lifetime of the screen.
     DisposableEffect(lifecycleOwner, rendererSwitching) {
         val observer = LifecycleEventObserver { _, event ->
@@ -249,23 +255,25 @@ fun GamaUI(
                     // Shizuku can be started while GAMA is backgrounded. Refresh
                     // both flags on every return; they are not guaranteed to be
                     // updated by the Shizuku callbacks after a cold start.
-                    var latestRunning = false
-                    var latestPermission = false
-                    for (attempt in 0 until 8) {
-                        latestRunning = ShizukuHelper.checkBinder()
-                        latestPermission = latestRunning && ShizukuHelper.checkPermission()
-                        if (latestRunning && latestPermission) break
-                        if (attempt < 7) delay(250L)
+                    val (latestRunning, latestPermission) = if (ShizukuBackend.installed(context) != null) {
+                        ShizukuHelper.awaitShizuku()
+                    } else {
+                        ShizukuHelper.checkBinder() to ShizukuHelper.checkPermission()
                     }
                     shizukuRunning = latestRunning
                     shizukuPermissionGranted = latestPermission
                     val latestRoot = ShizukuHelper.isRootAvailable()
                     rootAvailable = latestRoot
+                    lastRendererAction = RendererActionHistory.read(prefs)
                     shizukuStatus = when {
                         latestRoot -> strings["main.root_ready"].ifEmpty { "Running with root access ✅" }
-                        latestRunning && latestPermission -> strings["main.shizuku_ready"].ifEmpty { "Shizuku is running ✅" }
+                        latestRunning && latestPermission -> if (shizukuBackendName == "Shizuku") {
+                            strings["main.shizuku_ready"].ifEmpty { "Shizuku is running ✅" }
+                        } else strings["main.backend_ready"].ifEmpty { "%s is running ✅" }.replace("%s", shizukuBackendName)
                         latestRunning -> strings["main.shizuku_permission_needed"].ifEmpty { "Permission needed ⚠️" }
-                        else -> strings["main.shizuku_not_running"].ifEmpty { "Shizuku isn't running ❌" }
+                        else -> if (shizukuBackendName == "Shizuku") {
+                            strings["main.shizuku_not_running"].ifEmpty { "Shizuku isn't running ❌" }
+                        } else strings["main.backend_not_running"].ifEmpty { "%s isn't running ❌" }.replace("%s", shizukuBackendName)
                     }
                     val backendReady = latestRoot || (latestRunning && latestPermission)
                     if (backendReady) {
@@ -339,7 +347,6 @@ fun GamaUI(
     var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean("notif_enabled", false)) }
     // 0=2 h, 1=4 h, 2=6 h, 3=12 h, 4=24 h
     var notifIntervalIndex by remember { mutableStateOf(prefs.getInt("notif_interval_idx", 2)) }
-    var lastNotifSentTime by remember { mutableStateOf(prefs.getLong("notif_last_sent", 0L)) }
     // True once we've asked for the OS permission at least once
     var notifPermissionRequested by remember { mutableStateOf(prefs.getBoolean("notif_perm_requested", false)) }
 
@@ -630,7 +637,28 @@ fun GamaUI(
         )
     }    // 0=short 1=medium 2=full
     var matrixBgAlpha by remember { mutableStateOf(prefs.getFloat("matrix_bg_alpha", 0f)) }    // 0=transparent 1=black
-    var themePreference by remember { mutableStateOf(prefs.getInt("theme_preference", 0)) }
+    var themePreference by remember {
+        mutableStateOf(
+            if (prefs.contains("theme_preference")) prefs.getInt("theme_preference", 0)
+            // Migrate installs that only had the historical OLED toggle. An
+            // explicit theme selection always wins over legacy state.
+            else if (prefs.getBoolean("oled_mode", false)) 1 else 0
+        )
+    }
+    val legacyOledStatePresent = remember { prefs.contains("oled_mode") }
+    val legacyOledMigrationNeeded = remember {
+        !prefs.contains("theme_preference") && prefs.getBoolean("oled_mode", false)
+    }
+    LaunchedEffect(legacyOledStatePresent) {
+        if (legacyOledStatePresent) {
+            prefs.edit().apply {
+                if (legacyOledMigrationNeeded) putInt("theme_preference", themePreference)
+                remove("oled_mode")
+                remove("oled_accent_color")
+                remove("use_dynamic_color_oled")
+            }.apply()
+        }
+    }
 
     // New settings
     // Replaced separate buttonSize with shared uiScale
@@ -791,9 +819,6 @@ fun GamaUI(
             )
         }
     }
-    var oledMode by remember { mutableStateOf(prefs.getBoolean("oled_mode", false)) }
-    var oledAccentColor by remember { mutableStateOf(Color(prefs.getInt("oled_accent_color", 0xFF4895EF.toInt()))) }
-    var useDynamicColorOLED by remember { mutableStateOf(prefs.getBoolean("use_dynamic_color_oled", false)) }
 
     // Dynamic colors
     var useDynamicColor by remember { mutableStateOf(prefs.getBoolean("use_dynamic_color", true)) }
@@ -834,7 +859,10 @@ fun GamaUI(
 
     // In GAMA, dark mode is OLED mode. There is no separate dark-grey theme anymore.
     // This also makes Auto follow the system: if the phone is in dark mode, GAMA uses pure black.
-    val effectiveOledMode = isDarkTheme || oledMode
+    // Dark is the single source of truth for the OLED palette. Older installs
+    // may still carry oled_mode=true, but it must never override an explicit
+    // Light theme selection.
+    val effectiveOledMode = isDarkTheme
 
     LaunchedEffect(effectiveOledMode) {
         val sanitized = sanitizeAccentColorForTheme(customAccentColor, effectiveOledMode)
@@ -869,7 +897,7 @@ fun GamaUI(
 
     // Single accent source for the whole app.
     // Important: since GAMA now treats dark mode as OLED mode, the old separate
-    // oledAccentColor path made dark/OLED visuals ignore the main ACCENT COLOR.
+    // The dark palette intentionally uses the same accent as light mode.
     // This keeps cards, particles, Matrix rain, and the background gradient synced.
     val appAccent = dynamicAccent
 
@@ -1138,13 +1166,9 @@ fun GamaUI(
         val snapMatrixFontSize = matrixFontSize
         val snapMatrixFadeLength = matrixFadeLength
         val snapMatrixBgAlpha = matrixBgAlpha
-        val snapOled = oledMode
-        val snapOledAccent = oledAccentColor.toArgb()
-        val snapDynColorOled = useDynamicColorOLED
         val snapDismissOutside = dismissOnClickOutside
         val snapNotifEnabled = notificationsEnabled
         val snapNotifInterval = notifIntervalIndex
-        val snapNotifLastSent = lastNotifSentTime
         val snapNotifPermReq = notifPermissionRequested
 
         scope.launch(Dispatchers.IO) {
@@ -1213,13 +1237,9 @@ fun GamaUI(
                 putInt("matrix_fade_length", snapMatrixFadeLength)
                 putFloat("matrix_bg_alpha", snapMatrixBgAlpha)
                 putStringSet("excluded_apps", excludedAppsSnapshot)
-                putBoolean("oled_mode", snapOled)
-                putInt("oled_accent_color", snapOledAccent)
-                putBoolean("use_dynamic_color_oled", snapDynColorOled)
                 putBoolean("dismiss_on_click_outside", snapDismissOutside)
                 putBoolean("notif_enabled", snapNotifEnabled)
                 putInt("notif_interval_idx", snapNotifInterval)
-                putLong("notif_last_sent", snapNotifLastSent)
                 putBoolean("notif_perm_requested", snapNotifPermReq)
                 apply()
             }
@@ -1354,10 +1374,9 @@ fun GamaUI(
 
     // Stronger breathing gradient loop.
     // The InfiniteTransition is only created (and only ticks) when the gradient
-    // is actually visible — when gradientEnabled is false the slot returns a
-    // static 1f so the transition object is never allocated and zero frames are
-    // spent animating an invisible layer.
-    val breathingAlpha by if (gradientEnabled && appInForeground) {
+    // is actually visible and motion is enabled — otherwise the slot returns a
+    // static 1f so disabled/reduced-motion modes never allocate or tick it.
+    val breathingAlpha by if (gradientEnabled && appInForeground && animationLevel != 2) {
         val infiniteTransition = rememberInfiniteTransition(label = "breathing")
         infiniteTransition.animateFloat(
             initialValue = 1f,
@@ -1386,8 +1405,27 @@ fun GamaUI(
     }
 
     LaunchedEffect(Unit) {
-        shizukuRunning = ShizukuHelper.checkBinder()
-        shizukuPermissionGranted = ShizukuHelper.checkPermission()
+        // A previous version left the saved Vulkan value in place when boot
+        // restore exhausted its retries. That value is the desired renderer,
+        // not the actual post-boot renderer. Normalize that known failure on
+        // launch so existing installs stop displaying stale Vulkan.
+        val recordedAction = RendererActionHistory.read(prefs)
+        if (recordedAction?.source == "Boot restore" &&
+            !recordedAction.success &&
+            recordedAction.detail == "No privileged backend became ready after boot."
+        ) {
+            RendererState.recordBootRestoreUnavailable(prefs)
+            currentRenderer = RendererState.getRenderer(prefs)
+            lastSwitchTime = prefs.getLong(RendererState.PREF_LAST_SWITCH_TIME, lastSwitchTime)
+        }
+
+        val (initialRunning, initialPermission) = if (ShizukuBackend.installed(context) != null) {
+            ShizukuHelper.awaitShizuku()
+        } else {
+            ShizukuHelper.checkBinder() to ShizukuHelper.checkPermission()
+        }
+        shizukuRunning = initialRunning
+        shizukuPermissionGranted = initialPermission
         // Do not invoke `su` at startup: root managers can show an approval
         // dialog. The user explicitly requests root from RootAccessDialog.
         rootAvailable = ShizukuHelper.isRootAvailable()
@@ -1411,11 +1449,15 @@ fun GamaUI(
             rootAvailable -> strings["main.root_ready"].ifEmpty { "Running with root access ✅" }
             shizukuRunning && shizukuPermissionGranted -> {
                 if (userName.isNotEmpty()) strings["main.shizuku_ready_named"].replace("%s", userName)
-                    .ifEmpty { "You're all set, $userName! ✅" } else strings["main.shizuku_ready"].ifEmpty { "Shizuku is running ✅" }
+                    .ifEmpty { "You're all set, $userName! ✅" } else if (shizukuBackendName == "Shizuku") {
+                    strings["main.shizuku_ready"].ifEmpty { "Shizuku is running ✅" }
+                } else strings["main.backend_ready"].ifEmpty { "%s is running ✅" }.replace("%s", shizukuBackendName)
             }
 
             shizukuRunning -> strings["main.shizuku_permission_needed"].ifEmpty { "Permission needed ⚠️" }
-            else -> strings["main.shizuku_not_running"].ifEmpty { "Shizuku isn't running ❌" }
+            else -> if (shizukuBackendName == "Shizuku") {
+                strings["main.shizuku_not_running"].ifEmpty { "Shizuku isn't running ❌" }
+            } else strings["main.backend_not_running"].ifEmpty { "%s isn't running ❌" }.replace("%s", shizukuBackendName)
         }
 
         scope.launch {
@@ -1470,39 +1512,8 @@ fun GamaUI(
 
     }
 
-    // ── OpenGL reminder notification loop ─────────────────────────────────────
-    // Runs while the app is in the foreground. Interval options (hours):
-    // index: 0=2h, 1=4h, 2=6h, 3=12h, 4=24h
-    LaunchedEffect(notificationsEnabled, notifIntervalIndex, appInForeground) {
-        if (!appInForeground) return@LaunchedEffect
-
-        val intervalMs: Long = when (notifIntervalIndex) {
-            0 -> 2L * 3_600_000L
-            1 -> 4L * 3_600_000L
-            3 -> 12L * 3_600_000L
-            4 -> 24L * 3_600_000L
-            else -> 6L * 3_600_000L // default = 6 h
-        }
-        // Poll every 15 minutes, fire when the interval has elapsed
-        while (isActive) {
-            // No point waking up at all if the renderer is already Vulkan
-            if (currentRenderer != "OpenGL") {
-                delay(15 * 60_000L)
-                continue
-            }
-            delay(15 * 60_000L) // check every 15 min
-            if (!notificationsEnabled) continue
-            if (!ShizukuHelper.hasNotificationPermission(context)) continue
-            if (currentRenderer != "OpenGL") continue
-            val now = System.currentTimeMillis()
-            if (now - lastNotifSentTime >= intervalMs) {
-                val sent = sendOpenGLReminderNotification(context, userName)
-                if (sent) {
-                    lastNotifSentTime = now
-                    prefs.edit().putLong("notif_last_sent", now).apply()
-                }
-            }
-        }
+    LaunchedEffect(notificationsEnabled) {
+        OpenGLReminderScheduler.sync(context, notificationsEnabled)
     }
 
     // When a renderer switch is in progress, commandOutput being set is the real
@@ -1520,13 +1531,21 @@ fun GamaUI(
                     "Renderer switch failed — please try again."
                 }
                 currentRenderer = prefs.getString("last_renderer", "OpenGL") ?: "OpenGL"
+                RendererActionHistory.record(prefs, "GAMA", activeRendererTarget, false, commandOutput)
             } else if (commandOutput.contains("applied, but", ignoreCase = true)) {
                 // setprop may have succeeded, but an unreadable read-back is not
                 // enough to claim a durable switch or schedule reboot restore.
                 successDialogMessage = strings["main.renderer_applied_unverified"].ifEmpty {
                     "Renderer applied, but could not be verified."
                 }
+                RendererActionHistory.record(prefs, "GAMA", activeRendererTarget, false, commandOutput)
+            } else {
+                currentRenderer = RendererState.getRenderer(prefs)
+                lastSwitchTime = prefs.getLong(RendererState.PREF_LAST_SWITCH_TIME, lastSwitchTime)
+                // RendererController already records the authoritative action;
+                // the UI only reflects the completed transaction here.
             }
+            lastRendererAction = RendererActionHistory.read(prefs)
         }
     }
 
@@ -2112,7 +2131,9 @@ fun GamaUI(
                                                     oledMode = effectiveOledMode,
                                                     rendererLoading = rendererLoading,
                                                     lastSwitchTime = lastSwitchTime,
-                                                    rootAvailable = rootAvailable
+                                                    rootAvailable = rootAvailable,
+                                                    lastAction = lastRendererAction,
+                                                    backendName = shizukuBackendName
                                                 )
                                                 // Vulkan | OpenGL
                                                 Row(
@@ -2138,7 +2159,7 @@ fun GamaUI(
                                                                     context, scope, aggressiveMode,
                                                                     killLauncher,
                                                                     killKeyboard,
-                                                                    excludedAppsList.toSet(), emptySet(),
+                                                                    excludedAppsList.toSet(),
                                                                     onRendererStatusUpdate,
                                                                     if (verboseMode) { output -> verboseOutput += output } else null
                                                                 )
@@ -2156,7 +2177,9 @@ fun GamaUI(
                                                         modifier = Modifier.weight(1f),
                                                         isSelected = currentRenderer == "Vulkan",
                                                         forceHighlight = true,
-                                                    enabled = lsShizukuReady || rootAvailable,
+                                                    // Keep the button actionable when no backend is ready;
+                                                    // its click handler opens the backend setup dialog.
+                                                    enabled = true,
                                                         colors = colors,
                                                         oledMode = effectiveOledMode,
                                                         iconType = "vulkan"
@@ -2173,7 +2196,7 @@ fun GamaUI(
                                                                     context, scope, aggressiveMode,
                                                                     killLauncher,
                                                                     killKeyboard,
-                                                                    excludedAppsList.toSet(), emptySet(),
+                                                                    excludedAppsList.toSet(),
                                                                     onRendererStatusUpdate,
                                                                     if (verboseMode) { output -> verboseOutput += output } else null
                                                                 )
@@ -2190,7 +2213,7 @@ fun GamaUI(
                                                         },
                                                         modifier = Modifier.weight(1f),
                                                         isSelected = false,
-                                                    enabled = lsShizukuReady || rootAvailable,
+                                                    enabled = true,
                                                         colors = colors,
                                                         oledMode = effectiveOledMode,
                                                         iconType = "opengl"
@@ -2209,7 +2232,7 @@ fun GamaUI(
                                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                                 ) {
                                                     IllustratedButton(
-                                                        text = strings["integrations.widget_action"].ifEmpty { "Library" },
+                                                        text = strings["renderer.library"].ifEmpty { "Library" },
                                                         onClick = {
                                                             performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
                                                             openMainPanelExclusive { showResourcesPanel = true }
@@ -2658,7 +2681,9 @@ fun GamaUI(
                                                 oledMode = effectiveOledMode,
                                                 rendererLoading = rendererLoading,
                                                 lastSwitchTime = lastSwitchTime,
-                                                rootAvailable = rootAvailable
+                                                rootAvailable = rootAvailable,
+                                                lastAction = lastRendererAction,
+                                                backendName = shizukuBackendName
                                             )
 
                                             // Row 1: Vulkan | OpenGL — big square cards
@@ -2685,7 +2710,7 @@ fun GamaUI(
                                                                 context, scope, aggressiveMode,
                                                                 killLauncher,
                                                                 killKeyboard,
-                                                                excludedAppsList.toSet(), emptySet(),
+                                                            excludedAppsList.toSet(),
                                                                 onRendererStatusUpdate,
                                                                 if (verboseMode) { output -> verboseOutput += output } else null
                                                             )
@@ -2707,7 +2732,7 @@ fun GamaUI(
                                                     modifier = Modifier.weight(1f),
                                                     isSelected = currentRenderer == "Vulkan",
                                                     forceHighlight = true,
-                                                    enabled = shizukuReady || rootAvailable,
+                                                    enabled = true,
                                                     colors = colors,
                                                     oledMode = effectiveOledMode,
                                                     iconType = "vulkan"
@@ -2724,7 +2749,7 @@ fun GamaUI(
                                                                 context, scope, aggressiveMode,
                                                                 killLauncher,
                                                                 killKeyboard,
-                                                                excludedAppsList.toSet(), emptySet(),
+                                                            excludedAppsList.toSet(),
                                                                 onRendererStatusUpdate,
                                                                 if (verboseMode) { output -> verboseOutput += output } else null
                                                             )
@@ -2741,7 +2766,7 @@ fun GamaUI(
                                                     },
                                                     modifier = Modifier.weight(1f),
                                                     isSelected = false,
-                                                    enabled = shizukuReady || rootAvailable,
+                                                    enabled = true,
                                                     colors = colors,
                                                     oledMode = effectiveOledMode,
                                                     iconType = "opengl"
@@ -2761,7 +2786,7 @@ fun GamaUI(
                                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
                                                 IllustratedButton(
-                                                    text = strings["integrations.widget_action"].ifEmpty { "Library" },
+                                                    text = strings["renderer.library"].ifEmpty { "Library" },
                                                     onClick = {
                                                         performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
                                                         openMainPanelExclusive { showResourcesPanel = true }
@@ -2866,11 +2891,38 @@ fun GamaUI(
             //
             // Scrim is theme-aware: dark/OLED = darkening, light mode = brightening.
 
-            // Theme-aware scrim: darken in dark/OLED, brighten in light mode.
-            val scrimColor = if (effectiveOledMode)
+            // Theme-aware scrim. With blur disabled, use an almost opaque
+            // themed surface so panels remain readable instead of showing the
+            // home UI through a translucent wash.
+            val scrimColor = if (!blurEnabled) {
+                colors.background.copy(alpha = 0.98f)
+            } else if (effectiveOledMode) {
                 Color.Black.copy(alpha = 0.32f)
-            else
+            } else {
                 Color.White.copy(alpha = 0.45f)
+            }
+
+            // A scrim alone is not enough when blur is disabled: the GAMA title
+            // and renderer controls still read through transparent panel space.
+            // Fade the interactive home content itself while an overlay is up.
+            //
+            // The same fallback is needed when motion is set to Off. In that mode
+            // this snaps to its final state, preserving the user's motion setting
+            // while still ensuring an open panel never competes with the home UI.
+            val shouldFadeMainContent = visualAnyFullPanelOpen &&
+                    (!blurEnabled || animationLevel == 2)
+            val mainContentAlpha by animateFloatAsState(
+                targetValue = if (shouldFadeMainContent) 0f else 1f,
+                animationSpec = if (animationLevel == 2) snap() else tween(
+                    durationMillis = if (shouldFadeMainContent) 260 else 180,
+                    easing = if (shouldFadeMainContent) {
+                        MotionTokens.Easing.emphasizedDecelerate
+                    } else {
+                        MotionTokens.Easing.emphasized
+                    }
+                ),
+                label = "main_content_overlay_alpha"
+            )
 
             // Main-screen background transition.
             // When blur is disabled we only fade in the fallback scrim.
@@ -2949,7 +3001,9 @@ fun GamaUI(
             }
 
             // ── Main content layer ────────────────────────────────────────────
-            // Render the main menu ONCE.
+            // Render the main menu ONCE. When blur is unavailable or motion is
+            // disabled, its opacity transitions independently so foreground panel
+            // copy stays readable instead of competing with the home controls.
             //
             // The previous sharp/blurred crossfade rendered mainContent() twice and
             // animated alpha every time a panel opened. That made the home screen look
@@ -2960,9 +3014,12 @@ fun GamaUI(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && mainMenuBlurRadius > 0.1.dp) {
                     Modifier
                         .fillMaxSize()
+                        .graphicsLayer(alpha = mainContentAlpha)
                         .blur(radius = mainMenuBlurRadius, edgeTreatment = BlurredEdgeTreatment.Unbounded)
                 } else {
-                    Modifier.fillMaxSize()
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(alpha = mainContentAlpha)
                 }
 
             Box(modifier = mainContentModifier) {
@@ -3021,7 +3078,7 @@ fun GamaUI(
                             pendingRendererName = ""
                             Toast.makeText(
                                 context,
-                                "No root access detected — install Magisk/KernelSU, or use Shizuku",
+                                strings["main.no_root_access"].ifEmpty { "No root access detected — install Magisk/KernelSU, or use Shizuku" },
                                 Toast.LENGTH_LONG
                             ).show()
                         }
@@ -3031,7 +3088,8 @@ fun GamaUI(
                 isLandscape = isLandscape,
                 isTablet = isTablet,
                 colors = colors,
-                cardBackground = cardBackground
+                cardBackground = cardBackground,
+                backendName = shizukuBackendName
             )
 
             // Dialogs
@@ -3047,21 +3105,10 @@ fun GamaUI(
                     performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
                     showWarningDialog = false
 
-                    // 1. Optimistically update UI immediately.
-                    // Use commit() (synchronous) not apply() (async) — the renderer
-                    // switch crashes SystemUI which can also kill this process before
-                    // apply()'s background thread flushes. commit() guarantees the
-                    // new value is on disk before we invoke the shell command.
-                    if (pendingRendererName.isNotEmpty()) {
-                        currentRenderer = pendingRendererName
-                        val switchNow = System.currentTimeMillis()
-                        RendererState.recordSwitch(prefs, pendingRendererName, switchNow)
-                        lastSwitchTime = switchNow
-                    }
+                    // The controller commits state only after it has read the
+                    // requested property back successfully. Keep the UI on the
+                    // observed renderer until then.
                     activeRendererTarget = pendingRendererName
-
-                    // 1b. Keep the home-screen widgets and QS tiles in sync right away.
-                    scope.launch { ShizukuHelper.refreshRendererViewSync(context) }
 
                     // 2. Reset commandOutput so LaunchedEffect below can detect its arrival,
                     //    then open the dialog in the in-progress (spinner) state.
@@ -3085,28 +3132,6 @@ fun GamaUI(
                                 "Renderer switch timed out — please try again."
                             }
                             currentRenderer = prefs.getString("last_renderer", "OpenGL") ?: "OpenGL"
-                        }
-                    }
-
-                    // 4. Verify in background and correct if needed
-                    scope.launch {
-                        delay(2500) // Wait for command to finish
-                        if (ShizukuHelper.isBackendReady()) {
-                            val newRenderer = ShizukuHelper.getCurrentRenderer()
-                            if (newRenderer == "Vulkan" || newRenderer == "OpenGL") {
-                                currentRenderer = newRenderer
-                                if (newRenderer != activeRendererTarget) {
-                                    // An external change or failed command won.
-                                    // Keep the persisted state aligned with reality
-                                    // without creating a new switch timestamp.
-                                    RendererState.recordObservedRenderer(prefs, newRenderer)
-                                }
-                                // The verify may have corrected the optimistic value —
-                                // push the correction out to widgets and tiles too.
-                                ShizukuHelper.refreshRendererViewSync(context)
-                            }
-                            // Anything else (Unknown, Default, error) — keep the optimistic
-                            // value already set when the user confirmed the switch.
                         }
                     }
 
@@ -3253,7 +3278,11 @@ fun GamaUI(
                 },
                 onAppearanceClick = { showSettingsSearch = false; showAppearance = true },
                 onColorCustomizationClick = { showColorCustomization = true },
-                onGradientClick = { },
+                onGradientClick = {
+                    showSettingsSearch = false
+                    showColorCustomization = true
+                    showGradient = true
+                },
                 onEffectsClick = { showEffects = true },
                 onParticlesClick = { showParticles = true },
                 onRendererClick = { showSettingsSearch = false; showRendererPanel = true },
@@ -3281,7 +3310,10 @@ fun GamaUI(
                 // Colors
                 oledMode = effectiveOledMode,
                 darkModeActive = effectiveOledMode,
-                onOledModeChange = { oledMode = it; savePreferences() },
+                onOledModeChange = { enabled ->
+                    themePreference = if (enabled) 1 else 2
+                    savePreferences()
+                },
                 useDynamicColor = useDynamicColor,
                 onDynamicColorChange = { useDynamicColor = it; savePreferences() },
                 advancedColorPicker = advancedColorPicker,
@@ -3356,9 +3388,17 @@ fun GamaUI(
                 dismissOnClickOutside = dismissOnClickOutside,
                 onDismissOnClickOutsideChange = { dismissOnClickOutside = it; savePreferences() },
                 notificationsEnabled = notificationsEnabled,
-                onNotificationsEnabledChange = { notificationsEnabled = it; savePreferences() },
+                onNotificationsEnabledChange = {
+                    notificationsEnabled = it
+                    savePreferences()
+                    OpenGLReminderScheduler.sync(context, it)
+                },
                 notifIntervalIndex = notifIntervalIndex,
-                onNotifIntervalChange = { notifIntervalIndex = it; savePreferences() },
+                onNotifIntervalChange = {
+                    notifIntervalIndex = it
+                    savePreferences()
+                    OpenGLReminderScheduler.sync(context, notificationsEnabled)
+                },
                 // Common
                 isSmallScreen = isSmallScreen,
                 isLandscape = isLandscape,
@@ -3568,12 +3608,14 @@ fun GamaUI(
                     performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
                     notificationsEnabled = enabled
                     savePreferences()
+                    OpenGLReminderScheduler.sync(context, enabled)
                 },
                 notifIntervalIndex = notifIntervalIndex,
                 onNotifIntervalChange = { idx ->
                     performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
                     notifIntervalIndex = idx
                     savePreferences()
+                    OpenGLReminderScheduler.sync(context, notificationsEnabled)
                 },
                 hasPermission = hasNotifPermission.value,
                 onRequestPermission = {
@@ -3586,14 +3628,15 @@ fun GamaUI(
                         onRequestNotificationPermission()
                         android.widget.Toast.makeText(
                             context,
-                            "Grant notification permission first",
+                            strings["notifications.permission_first"].ifEmpty { "Grant notification permission first" },
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     } else {
                         val sent = sendOpenGLReminderNotification(context, userName)
                         android.widget.Toast.makeText(
                             context,
-                            if (sent) "Test notification sent! ✅" else "Failed to send notification",
+                            if (sent) strings["notifications.test_sent"].ifEmpty { "Test notification sent! ✅" }
+                            else strings["notifications.send_failed"].ifEmpty { "Failed to send notification" },
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -3622,14 +3665,12 @@ fun GamaUI(
                         } catch (e: Exception) {
                             android.widget.Toast.makeText(
                                 context,
-                                "Export failed: ${e.message}",
+                                strings["backup.export_failed"].ifEmpty { "Export failed: %s" }.replace("%s", e.message ?: ""),
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                             return@launch
                         }
                         onExportBackup(json, BackupHelper.buildFileName())
-                        android.widget.Toast.makeText(context, "Backup saved ✅", android.widget.Toast.LENGTH_SHORT)
-                            .show()
                     }
                 },
                 onImport = {
@@ -3667,9 +3708,6 @@ fun GamaUI(
                                 matrixFontSize = prefs.getInt("matrix_font_size", 1)
                                 matrixFadeLength = prefs.getInt("matrix_fade_length", 1)
                                 matrixBgAlpha = prefs.getFloat("matrix_bg_alpha", 0f)
-                                oledMode = prefs.getBoolean("oled_mode", false)
-                                oledAccentColor = Color(prefs.getInt("oled_accent_color", 0xFF4895EF.toInt()))
-                                useDynamicColorOLED = prefs.getBoolean("use_dynamic_color_oled", false)
                                 useDynamicColor = prefs.getBoolean("use_dynamic_color", true)
                                 customAccentColor = Color(prefs.getInt("custom_accent", 0xFF4895EF.toInt()))
                                 customGradientStart = Color(prefs.getInt("custom_gradient_start", 0xFF0A2540.toInt()))
@@ -3678,6 +3716,24 @@ fun GamaUI(
                                 notificationsEnabled = prefs.getBoolean("notif_enabled", false)
                                 notifIntervalIndex = prefs.getInt("notif_interval_idx", 2)
                                 userName = prefs.getString("user_name", "") ?: ""
+                                shadowsEnabled = prefs.getBoolean("shadows_enabled", true)
+                                backButtonInversed = prefs.getBoolean("back_button_inversed", false)
+                                showGpuWatchButton = prefs.getBoolean("show_gpuwatch_button", false)
+                                advancedColorPicker = prefs.getBoolean("advanced_color_picker", false)
+                                floatingLeftX = prefs.getFloat("floating_left_x", 0.30f).coerceIn(0.16f, 0.84f)
+                                floatingLeftY = prefs.getFloat("floating_left_y", 0.94f).coerceIn(0.50f, 0.96f)
+                                floatingRightX = prefs.getFloat("floating_right_x", 0.70f).coerceIn(0.16f, 0.84f)
+                                floatingRightY = prefs.getFloat("floating_right_y", 0.94f).coerceIn(0.50f, 0.96f)
+                                landscapeFloatingLeftX = prefs.getFloat("landscape_floating_left_x", 0.12f).coerceIn(0.04f, 0.96f)
+                                landscapeFloatingLeftY = prefs.getFloat("landscape_floating_left_y", 0.88f).coerceIn(0.50f, 0.96f)
+                                landscapeFloatingRightX = prefs.getFloat("landscape_floating_right_x", 0.88f).coerceIn(0.04f, 0.96f)
+                                landscapeFloatingRightY = prefs.getFloat("landscape_floating_right_y", 0.88f).coerceIn(0.50f, 0.96f)
+                                settingsButtonX = prefs.getFloat("settings_button_x", 0.84f).coerceIn(0.16f, 0.84f)
+                                settingsButtonY = prefs.getFloat("settings_button_y", 0.94f).coerceIn(0.50f, 0.96f)
+                                landscapeSettingsButtonX = prefs.getFloat("landscape_settings_button_x", 0.06f).coerceIn(0.04f, 0.96f)
+                                landscapeSettingsButtonY = prefs.getFloat("landscape_settings_button_y", 0.94f).coerceIn(0.50f, 0.96f)
+                                languageCodeState.value = LocalizationManager.getSavedCode(prefs)
+                                OpenGLReminderScheduler.sync(context, notificationsEnabled)
                                 // Haptics — restored by BackupHelper, so re-read here too
                                 hapticsEnabled = prefs.getBoolean(GamaHaptics.PREF_ENABLED, GamaHaptics.DEFAULT_ENABLED)
                                 hapticsRegularEnabled = prefs.getBoolean(GamaHaptics.PREF_REGULAR_ENABLED, GamaHaptics.DEFAULT_REGULAR_ENABLED)
@@ -3696,11 +3752,29 @@ fun GamaUI(
                                 lastSwitchTime = prefs.getLong(RendererState.PREF_LAST_SWITCH_TIME, 0L)
                                 excludedAppsList.clear()
                                 excludedAppsList.addAll(prefs.getStringSet("excluded_apps", emptySet()) ?: emptySet())
-                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                val localizedMsg = if (msg.contains("invalid entries skipped")) {
+                                    val numbers = Regex("\\d+").findAll(msg).map { it.value }.toList()
+                                    strings["backup.restored_with_skips"]
+                                        .ifEmpty { "Restored %d settings (%d invalid entries skipped)." }
+                                        .replace("%d", numbers.getOrElse(0) { "" })
+                                        .replace("%d", numbers.getOrElse(1) { "" })
+                                } else {
+                                    strings["backup.restored_count"]
+                                        .ifEmpty { "Restored %d settings successfully." }
+                                        .replace("%d", Regex("\\d+").find(msg)?.value ?: "")
+                                }
+                                android.widget.Toast.makeText(context, localizedMsg, android.widget.Toast.LENGTH_LONG).show()
                             } catch (e: Exception) {
+                                val reason = when (e.message) {
+                                    "This doesn't look like a GAMA backup file." ->
+                                        strings["backup.invalid_file"].ifEmpty { "This doesn't look like a GAMA backup file." }
+                                    "This backup was created by a newer version of GAMA." ->
+                                        strings["backup.newer_version"].ifEmpty { "This backup was created by a newer version of GAMA." }
+                                    else -> e.message ?: ""
+                                }
                                 android.widget.Toast.makeText(
                                     context,
-                                    "Import failed: ${e.message}",
+                                    strings["backup.import_failed"].ifEmpty { "Import failed: %s" }.replace("%s", reason),
                                     android.widget.Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -3728,7 +3802,10 @@ fun GamaUI(
                 colors = colors,
                 cardBackground = cardBackground,
                 oledMode = effectiveOledMode,
-                onExportCrashLog = onExportCrashLog
+                onExportCrashLog = onExportCrashLog,
+                onExportSupportBundle = {
+                    onExportCrashLog(SupportBundle.build(context), SupportBundle.fileName())
+                }
             )
 
             // ── Language panel ─────────────────────────────────────────────
@@ -3747,7 +3824,7 @@ fun GamaUI(
                 oledMode = effectiveOledMode
             )
 
-            // ── Info dialog for QS Tiles / Widget (shown from Resources panel) ──
+            // ── Info dialog for Quick Settings (shown from Resources panel) ──
             IntegrationInfoDialog(
                 visible = showIntegrationInfoDialog,
                 title = integrationInfoTitle,
@@ -3780,7 +3857,7 @@ fun GamaUI(
                         onRequestNotificationPermission()
                         android.widget.Toast.makeText(
                             context,
-                            "Please grant notification permission to test notifications",
+                            strings["notifications.grant_to_test"].ifEmpty { "Please grant notification permission to test notifications" },
                             android.widget.Toast.LENGTH_LONG
                         ).show()
                     } else {
@@ -3789,13 +3866,13 @@ fun GamaUI(
                         if (success) {
                             android.widget.Toast.makeText(
                                 context,
-                                "Test notification sent!",
+                                strings["notifications.test_sent_plain"].ifEmpty { "Test notification sent!" },
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         } else {
                             android.widget.Toast.makeText(
                                 context,
-                                "Failed to send notification",
+                                strings["notifications.send_failed"].ifEmpty { "Failed to send notification" },
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -3810,12 +3887,12 @@ fun GamaUI(
                             onRequestNotificationPermission()
                             android.widget.Toast.makeText(
                                 context,
-                                "Please grant notification permission to test notifications",
+                                strings["notifications.grant_to_test"].ifEmpty { "Please grant notification permission to test notifications" },
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         }
                     )
-                    android.widget.Toast.makeText(context, "Boot notification sent!", android.widget.Toast.LENGTH_SHORT)
+                    android.widget.Toast.makeText(context, strings["notifications.boot_sent"].ifEmpty { "Boot notification sent!" }, android.widget.Toast.LENGTH_SHORT)
                         .show()
                 },
                 userName = userName,
@@ -3882,11 +3959,7 @@ fun GamaUI(
                 },
                 onOledModeChange = { enabled ->
                     performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
-                    oledMode = enabled
-                    if (enabled) {
-                        themePreference = 1 // Force Dark
-                        prefs.edit().putInt("theme_preference", 1).apply()
-                    }
+                    themePreference = if (enabled) 1 else 2
                     savePreferences()
                 },
                 performHaptic = { performHaptic(HapticFeedbackConstants.CLOCK_TICK) }
@@ -4156,7 +4229,7 @@ fun GamaUI(
                 oledMode = effectiveOledMode,
                 onOledModeChange = { enabled ->
                     performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
-                    oledMode = enabled
+                    themePreference = if (enabled) 1 else 2
                     savePreferences()
                 },
                 useDynamicColor = useDynamicColor,
@@ -4176,7 +4249,7 @@ fun GamaUI(
                     customAccentColor = color
                     savePreferencesDebounced()
                 },
-                onGradientClick = { },
+                onGradientClick = { showGradient = true },
                 isDarkTheme = isDarkTheme,
                 performHaptic = { performHaptic(HapticFeedbackConstants.CONTEXT_CLICK) },
                 isSmallScreen = isSmallScreen,
@@ -4184,6 +4257,30 @@ fun GamaUI(
                 isTablet = isTablet,
                 colors = colors,
                 cardBackground = cardBackground
+            )
+
+            GradientPanel(
+                visible = showGradient,
+                onDismiss = {
+                    performHaptic(HapticFeedbackConstants.CONTEXT_CLICK)
+                    showGradient = false
+                },
+                gradientEnabled = gradientEnabled,
+                onGradientChange = { gradientEnabled = it; savePreferences() },
+                customGradientStart = customGradientStart,
+                onGradientStartChange = { customGradientStart = it; savePreferencesDebounced() },
+                customGradientEnd = customGradientEnd,
+                onGradientEndChange = { customGradientEnd = it; savePreferencesDebounced() },
+                useDynamicColor = useDynamicColor,
+                advancedColorPicker = advancedColorPicker,
+                oledMode = effectiveOledMode,
+                darkModeActive = isDarkTheme,
+                isSmallScreen = isSmallScreen,
+                isLandscape = isLandscape,
+                isTablet = isTablet,
+                colors = colors,
+                cardBackground = cardBackground,
+                performHaptic = { performHaptic(HapticFeedbackConstants.CLOCK_TICK) }
             )
 
             VerbosePanel(
@@ -4455,7 +4552,7 @@ fun GamaUI(
                                             colors.primaryAccent.copy(alpha = settingsBorderAlpha),
                                             RoundedCornerShape(28.dp)
                                         )
-                                        .semantics { contentDescription = "Open Settings" }
+                                        .semantics { contentDescription = strings["text_catalog.open_settings"].ifEmpty { "Open Settings" } }
                                         .floatingButtonGesture(
                                             enabled = controlsVisible,
                                             isLeftSide = false,

@@ -534,7 +534,7 @@ fun NotificationsPanel(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "TEST ALERT",
+                        text = LocalStrings.current["system.test_alert"].ifEmpty { "TEST ALERT" },
                         fontSize = ts.labelLarge,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 2.sp,
@@ -542,7 +542,7 @@ fun NotificationsPanel(
                         color = colors.primaryAccent.copy(alpha = 0.78f)
                     )
                     Text(
-                        text = "Send a sample alert to check that delivery is working.",
+                        text = LocalStrings.current["system.test_alert_desc"].ifEmpty { "Send a sample alert to check that delivery is working." },
                         fontSize = ts.bodySmall,
                         fontWeight = FontWeight.Bold,
                         fontFamily = quicksandFontFamily,

@@ -111,7 +111,8 @@ fun RootAccessDialog(
     isLandscape: Boolean,
     isTablet: Boolean,
     colors: ThemeColors,
-    cardBackground: Color
+    cardBackground: Color,
+    backendName: String = "Shizuku"
 ) {
     val ts = LocalTypeScale.current
     BouncyDialog(visible = visible, onDismiss = onDismiss) {
@@ -185,7 +186,9 @@ fun RootAccessDialog(
                 }
 
                 Text(
-                    text = LocalStrings.current["dialogs.root_body"].ifEmpty { "GAMA needs shell access to switch the renderer. Grant it via Shizuku, or — if your device is rooted — use the root backend (Magisk / KernelSU)." },
+                    text = LocalStrings.current["dialogs.root_body"]
+                        .ifEmpty { "GAMA needs shell access to switch the renderer. Grant it via $backendName, or — if your device is rooted — use the root backend (Magisk / KernelSU)." }
+                        .replace("Shizuku", backendName),
                     fontSize = ts.bodyLarge,
                     lineHeight = (ts.bodyLarge.value * 1.4f).sp,
                     color = colors.textPrimary.copy(alpha = 0.85f),
@@ -197,7 +200,9 @@ fun RootAccessDialog(
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     DialogButton(
-                        text = LocalStrings.current["dialogs.btn_use_shizuku"].ifEmpty { "Use Shizuku" },
+                        text = LocalStrings.current["dialogs.btn_use_shizuku"]
+                            .ifEmpty { "Use $backendName" }
+                            .replace("Shizuku", backendName),
                         onClick = onUseShizuku,
                         modifier = Modifier.fillMaxWidth(),
                         colors = colors,

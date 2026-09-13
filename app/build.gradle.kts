@@ -69,7 +69,7 @@ android {
     defaultConfig {
         applicationId = "com.popovicialinc.gama"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 13
         versionName = "1.4"
 
@@ -108,10 +108,22 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = false
+        buildConfig = true
         aidl = true
         resValues = false
         shaders = false
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("boolean", "CAN_INSTALL_SHIZUKU", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "CAN_INSTALL_SHIZUKU", "false")
+        }
     }
 
     packaging {
@@ -157,9 +169,6 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.1.0-rc01")
     implementation("com.google.android.material:material:1.11.0")
 
-    // Glance (home screen widget)
-    implementation("androidx.glance:glance-appwidget:1.1.1")
-    implementation("androidx.glance:glance-material3:1.1.1")
 
     // WorkManager (boot renderer retry)
     implementation(libs.androidx.work.runtime.ktx)
@@ -173,4 +182,8 @@ dependencies {
     // Real org.json implementation — android.jar only ships method stubs that
     // throw "not mocked" when BackupHelper's JSON code runs under JUnit.
     testImplementation("org.json:json:20240303")
+
+    // Instrumentation smoke tests
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
 }

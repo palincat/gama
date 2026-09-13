@@ -85,6 +85,26 @@ object RendererState {
             .commit()
     }
 
+    /**
+     * Record the known post-boot fallback when boot restoration could not even
+     * start because no privileged backend became available.  The desired
+     * renderer is intentionally preserved so a later manual retry can still
+     * restore Vulkan.
+     */
+    fun recordBootRestoreUnavailable(prefs: SharedPreferences) {
+        val desired = getDesiredRenderer(prefs)
+        if (desired != RENDERER_VULKAN || getRenderer(prefs) != RENDERER_VULKAN) return
+
+        val bootTime = currentBootTimeMs()
+        prefs.edit()
+            .putString(PREF_DESIRED_RENDERER, desired)
+            .putString(PREF_LAST_RENDERER, RENDERER_OPENGL)
+            .putLong(PREF_LAST_SWITCH_TIME, bootTime)
+            .putLong(PREF_LAST_SWITCH_UPTIME, SystemClock.elapsedRealtime())
+            .putLong(PREF_LAST_SWITCH_BOOT_TIME, bootTime)
+            .commit()
+    }
+
     /** Read the persisted renderer, defaulting to OpenGL (the Android default). */
     fun getRenderer(prefs: SharedPreferences): String =
         prefs.getString(PREF_LAST_RENDERER, RENDERER_OPENGL) ?: RENDERER_OPENGL

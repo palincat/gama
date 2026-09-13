@@ -7,9 +7,13 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import android.view.Display
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -379,6 +383,52 @@ private class PhysicsInputs {
 private const val STAR_ALPHA_BUCKETS = 4
 private const val STAR_DOT_SIZE_BUCKETS = 3
 
+private fun readLiveDisplayRefreshRate(context: Context): Float {
+    return try {
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay
+        }
+        display?.refreshRate?.takeIf { it > 0f } ?: 60f
+    } catch (_: Exception) {
+        60f
+    }
+}
+
+@Composable
+private fun rememberLiveDisplayRefreshRate(context: Context): Float {
+    var refreshRate by remember(context) {
+        mutableFloatStateOf(readLiveDisplayRefreshRate(context))
+    }
+
+    DisposableEffect(context) {
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay
+        }
+        val displayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+        val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+            override fun onDisplayChanged(changedDisplayId: Int) {
+                if (changedDisplayId == displayId) {
+                    refreshRate = readLiveDisplayRefreshRate(context)
+                }
+            }
+        }
+
+        displayManager?.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
+        onDispose { displayManager?.unregisterDisplayListener(listener) }
+    }
+
+    return refreshRate.coerceIn(1f, 240f)
+}
+
 // Standalone Particles Overlay Component
 @Composable
 fun ParticlesOverlay(
@@ -400,6 +450,7 @@ fun ParticlesOverlay(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
+    val displayHz = rememberLiveDisplayRefreshRate(context)
 
     // Calculate screen width in pixels for cloud updates
     val screenWidthPx = remember(configuration) {
@@ -525,7 +576,7 @@ fun ParticlesOverlay(
     var initialRotationY = 0f
     var calibrationSamples = 0
 
-    DisposableEffect(parallaxEnabled, enabled, nativeRefreshRate, quarterRefreshRate) {
+    DisposableEffect(parallaxEnabled, enabled, nativeRefreshRate, quarterRefreshRate, displayHz) {
         if (!parallaxEnabled || !enabled) {
             // Reset rotation values when parallax is disabled or overlay is disabled
             rotationX = 0f
@@ -604,16 +655,6 @@ fun ParticlesOverlay(
             override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) { }
         }
 
-        val displayHz = try {
-            val display =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    context.display
-                } else {
-                    @Suppress("DEPRECATION")
-                    (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay
-                }
-            display?.supportedModes?.maxOfOrNull { it.refreshRate } ?: display?.refreshRate ?: 60f
-        } catch (_: Exception) { 60f }.coerceAtLeast(1f)
         val divisor = when {
             nativeRefreshRate -> 1
             quarterRefreshRate -> 4
@@ -682,40 +723,10 @@ fun ParticlesOverlay(
 
     // ── Actual display refresh rate ───────────────────────────────────────────
     //
-    // Queried once and shared by both the physics loop and the render trigger.
-    // Works for any Hz: 50, 60, 90, 120, 144, or anything adaptive — nothing
-    // below is hardcoded to a specific display rate.
-    //
-    // IMPORTANT — why we use supportedModes.maxOf { refreshRate } instead of
-    // display.refreshRate:
-    //
-    //   On LTPO / adaptive-sync panels (Galaxy S23 Ultra, Pixel 8 Pro, etc.)
-    //   `Display.getRefreshRate()` returns the *current live* rate, which the
-    //   OS adaptive governor can idle down to 1–60 Hz when content appears still.
-    //   If the physics and render loops are calibrated to that idle rate they will
-    //   target 16.7ms intervals instead of 8.3ms — meaning the overlay renders at
-    //   60fps even when the panel is actually running at 120Hz, producing judder.
-    //
-    //   `Display.getSupportedModes()` always exposes the hardware ceiling, so
-    //   maxOf { refreshRate } gives the true panel maximum regardless of whatever
-    //   rate the governor has currently chosen.  The physics + render intervals
-    //   then stay correctly calibrated to the panel's native cadence.
-    val displayHz: Float = remember(context) {
-        try {
-            val display =
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                    context.display
-                } else {
-                    @Suppress("DEPRECATION")
-                    (context.getSystemService(Context.WINDOW_SERVICE)
-                                as android.view.WindowManager).defaultDisplay
-                }
-            // Prefer the maximum mode rate; fall back to live rate if modes unavailable.
-            display?.supportedModes?.maxOfOrNull { it.refreshRate }
-                ?: display?.refreshRate
-                ?: 60f
-        } catch (_: Exception) { 60f }
-    }.coerceAtLeast(1f)
+    // This is the live rate selected by Android's display governor, not the
+    // panel's maximum supported mode. The listener above updates it when the
+    // device changes modes, allowing LTPO / adaptive-refresh displays to idle
+    // down when appropriate and ramp up when animation needs it.
 
     // ── Vsync divisor ─────────────────────────────────────────────────────────
     //

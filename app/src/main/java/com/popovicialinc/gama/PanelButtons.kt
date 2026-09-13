@@ -222,6 +222,7 @@ fun BackArrowButton(
                     glowRadius = 9.dp
                 )
                 .border(borderWidthDp, borderColor, CircleShape)
+                .semantics { contentDescription = "Back" }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
@@ -601,6 +602,7 @@ fun PanelBackButton(
                     colors.primaryAccent.copy(alpha = borderAlphaVal),
                     RoundedCornerShape(28.dp)
                 )
+                .semantics { contentDescription = "Back" }
                 .floatingButtonGesture(
                     enabled = enabled,
                     isLeftSide = isLeftSide,

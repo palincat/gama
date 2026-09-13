@@ -1,5 +1,4 @@
 <resources>
     <string name="app_name">GAMA</string>
-    <string name="widget_description">Quick-switch between Vulkan and OpenGL renderers from your home screen.</string>
     <string name="tile_label">GAMA</string>
 </resources>

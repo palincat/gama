@@ -511,7 +511,7 @@ fun RendererPanel(
                     AnimatedElement(visible = visible, cardShadow = true, staggerIndex = 1, totalItems = 4) {
                         ToggleCard(
                             title = LocalStrings.current["renderer.aggressive_mode"].ifEmpty { "AGGRESSIVE MODE" },
-                            description = LocalStrings.current["renderer.aggressive_mode_desc"].ifEmpty { "Applies the renderer to every installed package — broader coverage, but read the warning before enabling" },
+                            description = LocalStrings.current["renderer.aggressive_mode_desc"].ifEmpty { "Restarts third-party apps only so they pick up the renderer — read the warning first" },
                             checked = aggressiveMode,
                             onCheckedChange = { performHaptic(); onAggressiveModeChange(it) },
                             colors = colors, cardBackground = cardBackground,
@@ -522,7 +522,7 @@ fun RendererPanel(
                 {
                     AnimatedElement(visible = visible, cardShadow = true, staggerIndex = 2, totalItems = 4) {
                         ToggleCard(
-                            title = LocalStrings.current["renderer.kill_launcher"].ifEmpty { "RESTART LAUNCHER ON SWITCH" },
+                            title = LocalStrings.current["renderer.kill_launcher"].ifEmpty { "RESTART LAUNCHER & SYSTEM UI" },
                             description = LocalStrings.current["renderer.kill_launcher_desc"].ifEmpty { "Restarts the launcher and System UI after switching so the new renderer applies to the system chrome too — leave off on Xiaomi / MIUI" },
                             checked = killLauncher,
                             onCheckedChange = { performHaptic(); onKillLauncherChange(it) },

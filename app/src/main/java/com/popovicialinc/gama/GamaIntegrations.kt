@@ -5,10 +5,13 @@ import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PersistableBundle
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -102,7 +105,7 @@ import kotlin.math.roundToInt
 
 
 // ============================================================
-// Integrations: Tasker, QS Tiles, Widget panel + cards
+// Integrations: Tasker and Quick Settings panels + shared cards
 // ============================================================
 
 @Composable
@@ -274,27 +277,6 @@ fun IntegrationsPanel(
                     }
                 }
 
-                // ── Home Screen Widget ──────────────────────────────────────
-                AnimatedElement(visible = visible, staggerIndex = 3, totalItems = 4) {
-                    IntegrationInfoCard(
-                        title = LocalStrings.current["integrations.widget"].ifEmpty { "HOME SCREEN WIDGET" },
-                        description = LocalStrings.current["integrations.widget_desc"].ifEmpty { "Put a Vulkan / OpenGL toggle right on your home screen. One tap and you're switched" },
-                        statusLabel = "Available",
-                        statusOk = true,
-                        actionLabel = "Add widget",
-                        onAction = {
-                            onInfoRequested(
-                                "Adding the Widget",
-                                "Use the launcher's widget picker, or tap the add button below to open Android's native widget pin sheet when supported. Once placed, the GAMA widget gives you quick renderer switching, live status, and a fast shortcut back into the app."
-                            )
-                        },
-                        colors = colors,
-                        cardBackground = cardBackground,
-                        oledMode = oledMode,
-                        isSmallScreen = isSmallScreen
-                    )
-                }
-
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -313,7 +295,7 @@ fun IntegrationsPanel(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// IntegrationInfoDialog — info-only popup for QS Tiles & Widget instructions
+// IntegrationInfoDialog — info-only popup for integration instructions
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun IntegrationInfoDialog(
@@ -388,12 +370,25 @@ fun IntegrationInfoDialog(
                 )
                 if (copyText != null) {
                     DialogButton(
-                        text = "Copy token",
+                        text = LocalStrings.current["integrations.copy_token"].ifEmpty { "Copy token" },
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
                                 as android.content.ClipboardManager
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("GAMA Tasker token", copyText))
-                            android.widget.Toast.makeText(context, "Tasker token copied", android.widget.Toast.LENGTH_SHORT).show()
+                            val clip = ClipData.newPlainText(
+                                localizedString(context, "integrations", "tasker_token_label", "GAMA Tasker token"),
+                                copyText
+                            )
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                clip.description.extras = PersistableBundle().apply {
+                                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                }
+                            }
+                            clipboard.setPrimaryClip(clip)
+                            android.widget.Toast.makeText(
+                                context,
+                                localizedString(context, "integrations", "token_copied", "Tasker token copied"),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = colors,
@@ -403,7 +398,7 @@ fun IntegrationInfoDialog(
                 }
                 if (guideUrl != null) {
                     DialogButton(
-                        text = "Open full guide",
+                        text = LocalStrings.current["integrations.open_full_guide"].ifEmpty { "Open full guide" },
                         onClick = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(guideUrl)))
                         },

@@ -28,7 +28,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -155,6 +154,10 @@ fun DisabledCardWrapper(
 @Composable
 fun BoxScope.DisabledCardWash(enabled: Boolean, oledMode: Boolean = false) {
     if (!enabled) {
+        // Use GAMA's resolved theme, not the device theme. Manual light/dark
+        // selection must remain consistent even when Android uses the opposite.
+        val appColors = LocalThemeColors.current
+        val useDarkWash = oledMode || appColors.background.luminance() < 0.5f
         Box(
             modifier = Modifier
                 // This is an overlay, not a layout participant. fillMaxSize()
@@ -162,7 +165,7 @@ fun BoxScope.DisabledCardWash(enabled: Boolean, oledMode: Boolean = false) {
                 // make the parent card as tall as its available viewport.
                 .matchParentSize()
                 .clip(RoundedCornerShape(28.dp))
-                .background((if (oledMode || isSystemInDarkTheme()) Color.Black else Color.White).copy(alpha = 0.50f))
+                .background((if (useDarkWash) Color.Black else Color.White).copy(alpha = 0.50f))
         )
     }
 }
@@ -411,6 +414,7 @@ fun MainContentCards(
     val landscape = LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
 
     val shizukuReady = shizukuRunning && shizukuPermissionGranted
+    val strings = LocalStrings.current
 
     // Responsive sizing — derived from the available space rather than hardcoded dp values.
     val configuration = LocalConfiguration.current
@@ -566,7 +570,7 @@ fun MainContentCards(
                                     horizontalArrangement = Arrangement.spacedBy(buttonSpacing)
                                 ) {
                                     IllustratedButton(
-                                        text = LocalStrings.current["integrations.widget_action"].ifEmpty { "Library" },
+                                        text = strings["renderer.library"].ifEmpty { "Library" },
                                         onClick = onResourcesClick,
                                         modifier = if (showGpuWatchButton) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                                         accent = false,
@@ -597,6 +601,21 @@ fun MainContentCards(
     } // Close outer Column
 }
 
+private fun localizedActionSource(strings: GamaStrings, source: String): String = when (source) {
+    "Quick Settings" -> strings["renderer.source_quick_settings"].ifEmpty { source }
+    "Boot restore" -> strings["renderer.source_boot_restore"].ifEmpty { source }
+    else -> source
+}
+
+private fun localizedActionDetail(strings: GamaStrings, detail: String): String = when (detail) {
+    "Renderer switch completed." -> strings["renderer.detail_switch_completed"].ifEmpty { detail }
+    "No privileged backend became ready after boot." -> strings["renderer.detail_no_backend_boot"].ifEmpty { detail }
+    "No privileged backend is available." -> strings["renderer.detail_no_backend"].ifEmpty { detail }
+    "The renderer property could not be verified." -> strings["renderer.detail_not_verified"].ifEmpty { detail }
+    "The renderer command failed unexpectedly." -> strings["renderer.detail_command_failed"].ifEmpty { detail }
+    else -> detail
+}
+
 @Composable
 fun RendererCard(
     currentRenderer: String,
@@ -611,7 +630,9 @@ fun RendererCard(
     oledMode: Boolean = false,
     rendererLoading: Boolean = false,
     lastSwitchTime: Long = 0L,  // epoch millis; 0 means never recorded
-    rootAvailable: Boolean = false
+    rootAvailable: Boolean = false,
+    lastAction: RendererActionRecord? = null,
+    backendName: String = "Shizuku"
 ) {
     // Root is a first-class backend: the card is "ready" when either Shizuku
     // permission or root access is available.
@@ -655,7 +676,7 @@ fun RendererCard(
     // On the happy path (backendReady = true) the error transitions don't exist —
     // zero ticks, zero slots, zero per-frame CPU on old chipsets.
 
-    val warningBorderAlpha by if (!backendReady) {
+    val warningBorderAlpha by if (!backendReady && animLevel != 2) {
         val t = rememberInfiniteTransition(label = "renderer_warning")
         t.animateFloat(
             initialValue = 0.30f, targetValue = 1.0f,
@@ -668,7 +689,7 @@ fun RendererCard(
         remember { mutableFloatStateOf(0.30f) }
     }
 
-    val glowAlpha by if (!backendReady) {
+    val glowAlpha by if (!backendReady && animLevel != 2) {
         val t = rememberInfiniteTransition(label = "renderer_glow")
         t.animateFloat(
             initialValue = 0.22f, targetValue = 0.55f,
@@ -874,6 +895,16 @@ fun RendererCard(
                             }
                         )
                     }
+                    .semantics {
+                        contentDescription = if (backendReady) {
+                            strings["renderer.accessibility_current_renderer"]
+                                .ifEmpty { "Current renderer: %s" }
+                                .replace("%s", currentRenderer)
+                        } else {
+                            strings["renderer.accessibility_unavailable"]
+                                .ifEmpty { "Renderer controls unavailable. Tap for setup help." }
+                        }
+                    }
             ) {
                 Column(
                     modifier = Modifier
@@ -883,7 +914,7 @@ fun RendererCard(
                     verticalArrangement = Arrangement.spacedBy(cardInnerSpacing)
                 ) {
                     Text(
-                        text = LocalStrings.current["widget.current_renderer"].ifEmpty { "CURRENT RENDERER" },
+                        text = strings["renderer.current_renderer"].ifEmpty { "CURRENT RENDERER" },
                         color = if (!backendReady) stateColor else colors.primaryAccent.copy(alpha = 0.86f),
                         fontSize = ts.labelLarge,
                         fontWeight = FontWeight.Bold,
@@ -894,6 +925,23 @@ fun RendererCard(
                     val displayRenderer =
                         if (currentRenderer == "Default" || currentRenderer.isEmpty()) "OpenGL" else currentRenderer
 
+                    lastAction?.let { action ->
+                        val result = if (action.success) {
+                            strings["renderer.last_action_succeeded"].ifEmpty { "Last action succeeded" }
+                        } else {
+                            strings["renderer.last_action_failed"].ifEmpty { "Last action failed" }
+                        }
+                        val actionSource = localizedActionSource(strings, action.source)
+                        val actionDetail = localizedActionDetail(strings, action.detail)
+                        Text(
+                            text = "$result · $actionSource: $actionDetail",
+                            color = if (action.success) colors.textSecondary else Color(0xFFFF6B6B),
+                            fontSize = ts.labelSmall,
+                            fontFamily = quicksandFontFamily,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     // Renderer name — shimmer skeleton while loading, then the real value
                     if (rendererLoading) {
                         // Skeleton shimmer: a pill-shaped placeholder that pulses while
@@ -1020,7 +1068,12 @@ fun RendererCard(
                             Text("⚠️", fontSize = ts.labelMedium)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (!shizukuRunning) "Shizuku not running" else "Permission needed",
+                                text = if (!shizukuRunning) {
+                                    strings["renderer.state_not_running"].ifEmpty { "%s not running" }
+                                        .replace("%s", backendName)
+                                } else {
+                                    strings["renderer.state_permission_needed"].ifEmpty { "Permission needed" }
+                                },
                                 fontSize = ts.labelMedium,
                                 color = stateColor,
                                 fontFamily = quicksandFontFamily,

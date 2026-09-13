@@ -251,7 +251,7 @@ fun SuccessDialog(
                     label        = "success_msg"
                 ) { switching ->
                     Text(
-                        text        = if (switching) "Applying changes…" else message,
+                        text        = if (switching) LocalStrings.current["main.applying_changes"].ifEmpty { "Applying changes…" } else message,
                         fontSize    = ts.bodyLarge,
                         lineHeight  = (ts.bodyLarge.value * 1.4f).sp,
                         color       = colors.textPrimary.copy(alpha = if (switching) 0.55f else 0.9f),

@@ -5,6 +5,7 @@ import android.content.Context
 import android.app.PendingIntent
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import android.os.SystemClock
 import kotlinx.coroutines.delay
 
 /**
@@ -44,16 +45,13 @@ class BootRendererWorker(
         val prefs = applicationContext.getSharedPreferences("gama_prefs", Context.MODE_PRIVATE)
         val savedRenderer = RendererState.getDesiredRenderer(prefs)
 
-        val propValue = when (savedRenderer) {
-            "Vulkan" -> "skiavk"
-            "OpenGL" -> "opengl"
-            else     -> return Result.success()  // unknown — nothing to do
-        }
+        if (savedRenderer != RendererState.RENDERER_VULKAN &&
+            savedRenderer != RendererState.RENDERER_OPENGL
+        ) return Result.success()
 
-        // Poll up to 90 s on this attempt — longer than the old 60 s goAsync window
-        // and within the WorkManager execution budget (10 min default).
-        // Root is checked first — it works even before Shizuku's daemon settles.
-        val shizukuReady = ShizukuHelper.refreshRootAvailability() || waitForShizuku(timeoutMs = 90_000L)
+        // A boot worker must never launch an su approval prompt. It waits only
+        // for an already-authorised Shizuku backend.
+        val shizukuReady = waitForShizuku(timeoutMs = 90_000L)
 
         if (!shizukuReady) {
             // Not ready yet — if we still have retries, WorkManager will reschedule.
@@ -61,7 +59,13 @@ class BootRendererWorker(
             val isLastAttempt = runAttemptCount >= MAX_ATTEMPTS - 1
             if (isLastAttempt) {
                 // All retries exhausted — give up and notify.
+                // At this point the device is definitely post-boot and the
+                // renderer property was never re-applied, so Android is using
+                // its OpenGL default. Preserve Vulkan as the desired target,
+                // but do not show it as the current renderer.
+                RendererState.recordBootRestoreUnavailable(prefs)
                 notifyBootResult(applicationContext, success = false, renderer = savedRenderer)
+                RendererActionHistory.record(prefs, "Boot restore", savedRenderer, false, "No privileged backend became ready after boot.")
             }
             return if (isLastAttempt) Result.failure() else Result.retry()
         }
@@ -72,50 +76,21 @@ class BootRendererWorker(
         // fail with a "broken pipe" error on the very first command.
         delay(500L)
 
-        // Shizuku is ready — apply the prop.
-        val result = ShizukuHelper.runCommand("setprop debug.hwui.renderer $propValue")
-        val success = !result.startsWith("Error")
-
-        return if (success) {
-            // Refresh the session stamps so offline reboot detection knows the
-            // prop matches the CURRENT boot (renderer pref stays as saved).
-            RendererState.stampRestore(prefs, savedRenderer)
-            ShizukuHelper.refreshRendererViewSync(applicationContext)
+        val result = RendererController.switch(
+            applicationContext,
+            RendererController.Request(savedRenderer, "Boot restore")
+        )
+        return if (result.verified) {
             notifyBootResult(applicationContext, success = true, renderer = savedRenderer)
             Result.success()
         } else {
-            // setprop returned an error string — check if the prop is already correct
-            // (some ROMs persist props across reboots).
-            val current = ShizukuHelper.getCurrentRenderer()
-            when {
-                current == savedRenderer -> {
-                    // Already set — nothing to do, just stamp the uptime and succeed silently.
-                    RendererState.stampRestore(prefs, savedRenderer)
-                    ShizukuHelper.refreshRendererViewSync(applicationContext)
-                    Result.success()
-                }
-                current == "Unknown" -> {
-                    // Couldn't read the prop at all — Shizuku may still be settling.
-                    // Don't treat this as a confirmed failure; retry so the next
-                    // attempt can re-read once the binder is fully stable.
-                    val isLastAttempt = runAttemptCount >= MAX_ATTEMPTS - 1
-                    if (isLastAttempt) {
-                        notifyBootResult(applicationContext, success = false, renderer = savedRenderer)
-                        Result.failure()
-                    } else {
-                        Result.retry()
-                    }
-                }
-                else -> {
-                    // setprop genuinely failed and prop is confirmed wrong — retry.
-                    val isLastAttempt = runAttemptCount >= MAX_ATTEMPTS - 1
-                    if (isLastAttempt) {
-                        notifyBootResult(applicationContext, success = false, renderer = savedRenderer)
-                        Result.failure()
-                    } else {
-                        Result.retry()
-                    }
-                }
+            val isLastAttempt = runAttemptCount >= MAX_ATTEMPTS - 1
+            if (isLastAttempt) {
+                notifyBootResult(applicationContext, success = false, renderer = savedRenderer)
+                RendererActionHistory.record(prefs, "Boot restore", savedRenderer, false, result.message)
+                Result.failure()
+            } else {
+                Result.retry()
             }
         }
     }
@@ -125,8 +100,8 @@ class BootRendererWorker(
      * or until [timeoutMs] elapses.
      */
     private suspend fun waitForShizuku(timeoutMs: Long): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
             if (ShizukuHelper.checkBinder() && ShizukuHelper.checkPermission()) return true
             delay(2_000L)
         }
@@ -145,18 +120,31 @@ class BootRendererWorker(
             nm.createNotificationChannel(
                 android.app.NotificationChannel(
                     "gama_boot",
-                    "GAMA Boot Status",
+                    localizedString(context, "notification", "channel_boot_name", "GAMA Boot Status"),
                     android.app.NotificationManager.IMPORTANCE_LOW
-                ).apply { description = "Renderer re-apply status after reboot" }
+                ).apply {
+                    description = localizedString(
+                        context, "notification", "channel_boot_desc",
+                        "Renderer re-apply status after reboot"
+                    )
+                }
             )
         }
 
         val (title, body) = if (success) {
-            "GAMA ✓  $renderer restored" to
-                "$renderer renderer re-applied after reboot. Newly launched apps will use it."
+            localizedString(context, "notification", "boot_restored_title", "GAMA ✓  %s restored")
+                .replace("%s", renderer) to
+                localizedString(
+                    context, "notification", "boot_restored_body",
+                    "%s renderer re-applied after reboot. Newly launched apps will use it."
+                ).replace("%s", renderer)
         } else {
-            "GAMA · $renderer restore skipped" to
-                "Shizuku was not ready after boot. Open GAMA and switch manually when you want."
+            localizedString(context, "notification", "boot_skipped_title", "GAMA · %s restore skipped")
+                .replace("%s", renderer) to
+                localizedString(
+                    context, "notification", "boot_skipped_body",
+                    "Shizuku was not ready after boot. Open GAMA and switch manually when you want."
+                )
         }
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)

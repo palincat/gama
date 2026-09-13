@@ -59,14 +59,15 @@ While optimized for the Samsung Galaxy S23 lineup, this project is compatible wi
 
 * **Your Android device**
 * [**The latest .apk of GAMA**](https://github.com/popovicialinc/gama/releases/latest)
-* [**Shizuku**](https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api)
+* [**Shizuku**](https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api) (recommended)
   * Don't have Shizuku yet? **GAMA can download and install it for you** — the "Shizuku isn't running" help dialog has a *Download & install Shizuku* button that fetches the official APK from [Shizuku's GitHub releases](https://github.com/RikkaApps/Shizuku/releases/latest) and installs it.
   * Alternatively, download straight from [Shizuku's official GitHub repository](https://github.com/RikkaApps/Shizuku/releases/latest)
+* **Shevery** (optional) — GAMA recognizes [Shevery](https://github.com/HmnDev-Tech/shevery), a Shizuku-compatible fork, and will open it from the help flow when installed. GAMA continues to use the standard Shizuku client protocol and does not download or require Shevery. If both managers are present, GAMA prefers official Shizuku.
 * **Rooted?** (Magisk / KernelSU) — GAMA detects root automatically and uses it as a silent backend. No Shizuku needed at all on rooted devices.
 
 ## **Installation & Usage**
 
-* Install **Shizuku** (or let GAMA download it for you) and [*start the service*](https://shizuku.rikka.app/guide/setup/#start-via-wireless-debugging)
+* Install **Shizuku** (recommended; or let GAMA download it for you) or the optional compatible **Shevery**, then start its service.
 * Install the latest **GAMA** APK on your device.
 * Open **GAMA**. The app will detect **Shizuku** and **request permission** to run commands - **grant permission**.
   * If **GAMA** displays "**Permission needed**⚠️"

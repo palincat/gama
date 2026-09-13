@@ -1,12 +1,8 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+/.idea/
+/!assets/.idea/
 .DS_Store
 /build
 /captures
@@ -23,3 +19,6 @@ keystore.properties
 /app/release/
 /.kotlin/errors/
 *.backup
+
+# Release archives do not belong in source packages.
+/app/src/main/java/com/popovicialinc/gama/Source Code v1.4.zip

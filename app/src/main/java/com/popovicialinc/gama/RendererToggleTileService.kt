@@ -13,13 +13,9 @@ import kotlinx.coroutines.launch
 
 // ── Tile localization helper ──────────────────────────────────────────────────
 private fun android.content.Context.tileStr(section: String, key: String, fallback: String): String {
-    return try {
-        val prefs = getSharedPreferences("gama_prefs", android.content.Context.MODE_PRIVATE)
-        val code = prefs.getString("selected_language", "en") ?: "en"
-        if (code == "en") return fallback
-        val raw = assets.open("translations/$code.json").bufferedReader().readText()
-        org.json.JSONObject(raw).optJSONObject(section)?.optString(key)?.takeIf { it.isNotEmpty() } ?: fallback
-    } catch (_: Exception) { fallback }
+    val code = getSharedPreferences("gama_prefs", android.content.Context.MODE_PRIVATE)
+        .getString("selected_language", "en") ?: "en"
+    return LocalizationManager.getStringBlocking(this, code, section, key, fallback)
 }
 
 /**
@@ -54,48 +50,38 @@ class RendererToggleTileService : TileService() {
         val targetName = if (targetVulkan) RendererState.RENDERER_VULKAN else RendererState.RENDERER_OPENGL
 
         scope.launch {
-            if (!ShizukuHelper.isBackendReady() && !ShizukuHelper.refreshRootAvailability()) {
-                setTile(Tile.STATE_INACTIVE, applicationContext.tileStr("tile", "state_shizuku_not_running", "Shizuku isn't running"))
+            // Tapping a system surface must not trigger an unexpected Magisk /
+            // KernelSU prompt. Root is usable here only when this process already
+            // has a cached, user-approved root backend.
+            if (!ShizukuHelper.isBackendReady()) {
+                RendererActionHistory.record(prefs, "Quick Settings", targetName, false, "No privileged backend is available.")
+                val backendName = ShizukuBackend.installed(applicationContext)?.displayName ?: "Shizuku"
+                setTile(
+                    Tile.STATE_INACTIVE,
+                    applicationContext.tileStr("tile", "state_backend_not_running", "%s isn't running")
+                        .replace("%s", backendName)
+                )
                 return@launch
             }
 
             setTile(Tile.STATE_ACTIVE, applicationContext.tileStr("tile", "state_switching", "Switching…"))
 
             try {
-                val applied = if (targetVulkan) {
-                    ShizukuHelper.runVulkanSuspend(
-                        context = applicationContext,
-                        aggressiveMode = prefs.getBoolean("aggressive_mode", false),
-                        killLauncher = prefs.getBoolean("kill_launcher", false),
-                        killKeyboard = prefs.getBoolean("kill_keyboard", false),
-                        excludedApps = prefs.getStringSet("excluded_apps", emptySet()) ?: emptySet(),
-                        targetedApps = emptySet(),
-                        onStatusUpdate = {}
-                    )
-                } else {
-                    ShizukuHelper.runOpenGLSuspend(
-                        context = applicationContext,
-                        aggressiveMode = prefs.getBoolean("aggressive_mode", false),
-                        killLauncher = prefs.getBoolean("kill_launcher", false),
-                        killKeyboard = prefs.getBoolean("kill_keyboard", false),
-                        excludedApps = prefs.getStringSet("excluded_apps", emptySet()) ?: emptySet(),
-                        targetedApps = emptySet(),
-                        onStatusUpdate = {}
-                    )
-                }
-                if (applied) {
-                    // Persist renderer + both switch timestamps so BootReceiver
-                    // re-applies this choice after reboot. commit() because the
-                    // SystemUI soft-crash can kill this process mid-switch.
-                    RendererState.recordSwitch(prefs, targetName)
+                val result = RendererController.switch(
+                    applicationContext,
+                    RendererController.Request(targetName, "Quick Settings")
+                )
+                if (result.verified) {
                     setTile(Tile.STATE_ACTIVE, null)
                 } else {
+                    RendererActionHistory.record(prefs, "Quick Settings", targetName, false, "The renderer property could not be verified.")
                     setTile(
                         Tile.STATE_INACTIVE,
                         applicationContext.tileStr("tile", "state_failed", "Failed — tap to retry")
                     )
                 }
             } catch (_: Exception) {
+                RendererActionHistory.record(prefs, "Quick Settings", targetName, false, "The renderer command failed unexpectedly.")
                 setTile(Tile.STATE_INACTIVE, applicationContext.tileStr("tile", "state_failed", "Failed — tap to retry"))
             }
         }

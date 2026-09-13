@@ -449,7 +449,7 @@ fun CompactColorPickerCard(
                         },
                         label = {
                             Text(
-                                text = "Hex Color",
+                                text = LocalStrings.current["colors.hex_label"].ifEmpty { "Hex Color" },
                                 fontFamily = quicksandFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = ts.labelSmall
@@ -477,7 +477,7 @@ fun CompactColorPickerCard(
                     )
                     if (hexError) {
                         Text(
-                            text = LocalStrings.current["colors.advanced_picker_desc"].ifEmpty { "Enter a valid 6-digit hex (for example #4895EF)." },
+                            text = LocalStrings.current["colors.hex_error"].ifEmpty { "Enter a valid 6-digit hex (for example #4895EF)." },
                             fontSize = ts.labelSmall,
                             color = Color(0xFFEF4444),
                             fontFamily = quicksandFontFamily,

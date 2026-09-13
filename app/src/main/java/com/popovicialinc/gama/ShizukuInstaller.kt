@@ -38,7 +38,7 @@ object ShizukuInstaller {
 
     // APK asset href inside the GitHub "expanded assets" page, e.g.
     // href="/RikkaApps/Shizuku/releases/download/v13.6.0/shizuku-v13.6.0.r1086.2650830c-release.apk"
-    private val APK_HREF_REGEX = Regex("""href="([^"]+\.apk)"""")
+    private val APK_HREF_REGEX = Regex("""href="([^"]*shizuku-v[0-9][^"]*-release\.apk)"""")
 
     // Latest failure reason, filled in by the resolvers/downloader so the UI can
     // show exactly what went wrong instead of a generic message.
@@ -72,10 +72,12 @@ object ShizukuInstaller {
     private fun isAllowedDownloadHost(url: String): Boolean {
         return try {
             val host = URL(url).host.lowercase()
-            url.lowercase().startsWith("https://") && (
-                host == "github.com" || host.endsWith(".github.com") ||
-                    host == "githubusercontent.com" || host.endsWith(".githubusercontent.com")
-                )
+            url.lowercase().startsWith("https://") && host in setOf(
+                "github.com",
+                "api.github.com",
+                "objects.githubusercontent.com",
+                "release-assets.githubusercontent.com"
+            )
         } catch (_: Exception) { false }
     }
 
@@ -106,12 +108,15 @@ object ShizukuInstaller {
                 // per hour PER IP — and mobile carriers share IPs, so it gets
                 // rate-limited (HTTP 403) a lot. The plain release page has no
                 // such limit, so it's the fallback whenever the API fails.
-                val resolved = resolveApkUrlApi() ?: resolveApkUrlHtml()
+                val resolved = resolveApkUrlApi(context) ?: resolveApkUrlHtml(context)
                 if (resolved == null) {
                     return@withContext DownloadResult(null, lastError)
                 }
                 if (!isAllowedDownloadHost(resolved.url)) {
-                    return@withContext DownloadResult(null, "Resolved download URL is not a GitHub host — aborting")
+                    return@withContext DownloadResult(
+                        null,
+                        localizedString(context, "dialogs", "install_err_bad_host", "Resolved download URL is not a GitHub host — aborting")
+                    )
                 }
 
                 // ── 2. Stream the APK to cache ─────────────────────────────────
@@ -123,13 +128,29 @@ object ShizukuInstaller {
                     dlConnection.readTimeout = 15_000
                     dlConnection.instanceFollowRedirects = true
                     if (dlConnection.responseCode != HttpURLConnection.HTTP_OK) {
-                        lastError = "GitHub replied HTTP ${dlConnection.responseCode} while downloading the APK"
+                        lastError = localizedString(
+                            context, "dialogs", "install_err_http_download",
+                            "GitHub replied HTTP %s while downloading the APK"
+                        ).replace("%s", dlConnection.responseCode.toString())
                         return@withContext DownloadResult(null, lastError)
+                    }
+                    // HttpURLConnection follows redirects automatically. Check
+                    // the final URL too, otherwise a redirect could bypass the
+                    // allowlist before any APK bytes are trusted.
+                    if (!isAllowedDownloadHost(dlConnection.url.toString())) {
+                        target.delete()
+                        return@withContext DownloadResult(
+                            null,
+                            localizedString(context, "dialogs", "install_err_redirect", "APK download redirected to an untrusted host")
+                        )
                     }
                     val totalBytes = dlConnection.contentLengthLong
                     if (totalBytes > MAX_APK_SIZE) {
                         target.delete()
-                        return@withContext DownloadResult(null, "Downloaded APK is unexpectedly large")
+                        return@withContext DownloadResult(
+                            null,
+                            localizedString(context, "dialogs", "install_err_too_large", "Downloaded APK is unexpectedly large")
+                        )
                     }
                     dlConnection.inputStream.use { input ->
                         FileOutputStream(target).use { output ->
@@ -140,7 +161,9 @@ object ShizukuInstaller {
                                 output.write(buffer, 0, read)
                                 downloaded += read
                                 if (downloaded > MAX_APK_SIZE) {
-                                    throw IllegalStateException("Downloaded APK exceeds the safety size limit")
+                                    throw IllegalStateException(
+                                        localizedString(context, "dialogs", "install_err_size_limit", "Downloaded APK exceeds the safety size limit")
+                                    )
                                 }
                                 if (totalBytes > 0) {
                                     onProgress((downloaded.toFloat() / totalBytes).coerceIn(0f, 1f))
@@ -155,7 +178,10 @@ object ShizukuInstaller {
                 // ── 3. Verify: size, ZIP magic, SHA-256 digest, package name ───
                 if (target.length() < MIN_APK_SIZE) {
                     target.delete()
-                    return@withContext DownloadResult(null, "Downloaded file is too small to be an APK")
+                    return@withContext DownloadResult(
+                        null,
+                        localizedString(context, "dialogs", "install_err_too_small", "Downloaded file is too small to be an APK")
+                    )
                 }
                 target.inputStream().use { input ->
                     val magic = ByteArray(4)
@@ -163,7 +189,10 @@ object ShizukuInstaller {
                         magic[1] != 'K'.code.toByte() || magic[2] != 3.toByte() || magic[3] != 4.toByte()
                     ) {
                         target.delete()
-                        return@withContext DownloadResult(null, "Downloaded file isn't a valid APK")
+                        return@withContext DownloadResult(
+                            null,
+                            localizedString(context, "dialogs", "install_err_not_apk", "Downloaded file isn't a valid APK")
+                        )
                     }
                 }
                 // Official per-release digest (GitHub API) — catches corrupted or
@@ -175,14 +204,21 @@ object ShizukuInstaller {
                         target.delete()
                         return@withContext DownloadResult(
                             null,
-                            "APK checksum mismatch (expected $expectedHex, got $actualHex)"
+                            localizedString(
+                                context, "dialogs", "install_err_checksum",
+                                "APK checksum mismatch (expected %s, got %s)"
+                            ).replace("%s", expectedHex).replace("%s", actualHex)
                         )
                     }
                 }
                 val pkgInfo = context.packageManager.getPackageArchiveInfo(target.absolutePath, 0)
                 if (pkgInfo == null || pkgInfo.packageName != SHIZUKU_PACKAGE) {
                     target.delete()
-                    return@withContext DownloadResult(null, "Downloaded file isn't Shizuku (${pkgInfo?.packageName ?: "unknown package"})")
+                    return@withContext DownloadResult(
+                        null,
+                        localizedString(context, "dialogs", "install_err_not_shizuku", "Downloaded file isn't Shizuku (%s)")
+                            .replace("%s", pkgInfo?.packageName ?: localizedString(context, "common", "unknown_package", "unknown package"))
+                    )
                 }
 
                 DownloadResult(target, "")
@@ -197,7 +233,7 @@ object ShizukuInstaller {
      * official SHA-256 digest, which [downloadLatestApk] verifies.
      * @return the resolved APK target, or null (with [lastError] set).
      */
-    private fun resolveApkUrlApi(): ResolvedApk? {
+    private fun resolveApkUrlApi(context: Context): ResolvedApk? {
         try {
             val conn = URL(RELEASE_API_URL).openConnection() as HttpURLConnection
             try {
@@ -211,22 +247,25 @@ object ShizukuInstaller {
                         val assets = JSONObject(json).getJSONArray("assets")
                         for (i in 0 until assets.length()) {
                             val asset = assets.getJSONObject(i)
-                            if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
+                            if (asset.optString("name").matches(Regex("""shizuku-v[0-9].*-release\.apk""", RegexOption.IGNORE_CASE))) {
                                 val url = asset.optString("browser_download_url")
                                 if (url.isNotBlank()) {
                                     return ResolvedApk(url, asset.optString("digest").takeIf { it.isNotBlank() })
                                 }
                             }
                         }
-                        lastError = "No APK found on the GitHub release page"
+                        lastError = localizedString(context, "dialogs", "install_err_no_apk", "No APK found on the GitHub release page")
                     }
-                    else -> lastError = "GitHub API rate limit or error (HTTP ${conn.responseCode})"
+                    else -> lastError = localizedString(
+                        context, "dialogs", "install_err_api_rate",
+                        "GitHub API rate limit or error (HTTP %s)"
+                    ).replace("%s", conn.responseCode.toString())
                 }
             } finally {
                 conn.disconnect()
             }
         } catch (_: Exception) {
-            lastError = "GitHub API unreachable"
+            lastError = localizedString(context, "dialogs", "install_err_api_unreachable", "GitHub API unreachable")
         }
         return null
     }
@@ -237,7 +276,7 @@ object ShizukuInstaller {
      * No digest is available on this path — TLS + post-download checks apply.
      * @return the resolved APK target, or null (with [lastError] set).
      */
-    private fun resolveApkUrlHtml(): ResolvedApk? {
+    private fun resolveApkUrlHtml(context: Context): ResolvedApk? {
         try {
             val latest = URL(RELEASE_PAGE_URL).openConnection() as HttpURLConnection
             val tagUrl: String
@@ -248,7 +287,10 @@ object ShizukuInstaller {
                 latest.instanceFollowRedirects = true
                 val code = latest.responseCode
                 if (code != HttpURLConnection.HTTP_OK) {
-                    lastError = "GitHub replied HTTP $code on the release page"
+                    lastError = localizedString(
+                        context, "dialogs", "install_err_http_page",
+                        "GitHub replied HTTP %s on the release page"
+                    ).replace("%s", code.toString())
                     return null
                 }
                 // After following redirects this is https://github.com/.../releases/tag/<tag>
@@ -264,12 +306,15 @@ object ShizukuInstaller {
                 page.connectTimeout = 10_000
                 page.readTimeout = 10_000
                 if (page.responseCode != HttpURLConnection.HTTP_OK) {
-                    lastError = "GitHub replied HTTP ${page.responseCode} on the assets page"
+                    lastError = localizedString(
+                        context, "dialogs", "install_err_http_assets",
+                        "GitHub replied HTTP %s on the assets page"
+                    ).replace("%s", page.responseCode.toString())
                     return null
                 }
                 val html = page.inputStream.bufferedReader().use { it.readText() }
                 val match = APK_HREF_REGEX.find(html) ?: run {
-                    lastError = "No APK link found on the GitHub release page"
+                    lastError = localizedString(context, "dialogs", "install_err_no_link", "No APK link found on the GitHub release page")
                     return null
                 }
                 val href = match.groupValues[1]
@@ -279,7 +324,8 @@ object ShizukuInstaller {
                 page.disconnect()
             }
         } catch (e: Exception) {
-            lastError = "Couldn't reach GitHub (${e.message ?: e.javaClass.simpleName})"
+            lastError = localizedString(context, "dialogs", "install_err_unreachable", "Couldn't reach GitHub (%s)")
+                .replace("%s", e.message ?: e.javaClass.simpleName)
         }
         return null
     }
@@ -330,12 +376,15 @@ object ShizukuInstaller {
                 installer.createSession(params)
             } catch (_: SecurityException) {
                 return@withContext InstallResult.Failed(
-                    "GAMA isn't allowed to open the installer on this device. " +
-                        "Enable 'Install unknown apps' for GAMA in Settings, then retry."
+                    localizedString(
+                        context, "dialogs", "shizuku_install_blocked",
+                        "GAMA isn't allowed to open the installer on this device. Enable 'Install unknown apps' for GAMA in Settings, then retry."
+                    )
                 )
             } catch (e: Exception) {
                 return@withContext InstallResult.Failed(
-                    "Couldn't start the installer: ${e.message ?: e.javaClass.simpleName}"
+                    localizedString(context, "dialogs", "install_err_start", "Couldn't start the installer: %s")
+                        .replace("%s", e.message ?: e.javaClass.simpleName)
                 )
             }
 
@@ -372,7 +421,10 @@ object ShizukuInstaller {
                                     runCatching { context.unregisterReceiver(this) }
                                     cont.resume(
                                         InstallResult.Failed(
-                                            "The system installer returned an invalid confirmation intent"
+                                            localizedString(
+                                                context, "dialogs", "install_err_invalid_intent",
+                                                "The system installer returned an invalid confirmation intent"
+                                            )
                                         )
                                     )
                                 }
@@ -388,7 +440,10 @@ object ShizukuInstaller {
                                 cont.resume(
                                     InstallResult.Failed(
                                         intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-                                            ?: "Installation failed (status $status)"
+                                            ?: localizedString(
+                                                context, "dialogs", "install_err_failed",
+                                                "Installation failed (status %s)"
+                                            ).replace("%s", status.toString())
                                     )
                                 )
                             }
@@ -434,7 +489,8 @@ object ShizukuInstaller {
                     if (cont.isActive) {
                         cont.resume(
                             InstallResult.Failed(
-                                "Couldn't start the install: ${e.message ?: e.javaClass.simpleName}"
+                                localizedString(context, "dialogs", "install_err_start_install", "Couldn't start the install: %s")
+                                    .replace("%s", e.message ?: e.javaClass.simpleName)
                             )
                         )
                     }

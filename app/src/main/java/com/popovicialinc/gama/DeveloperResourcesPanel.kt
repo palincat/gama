@@ -181,7 +181,7 @@ fun ResourcesPanel(
             strings["integrations.shizuku_link_desc"].ifEmpty { "Opens the official Shizuku website. Shizuku is required for GAMA to execute renderer switching commands." })
     )
     // 3 link cards + 3 integration cards = 6 total
-    val totalItems = links.size + 3
+    val totalItems = links.size + 2
 
     PanelScaffold(
         visible = visible, onDismiss = onDismiss,
@@ -217,7 +217,7 @@ fun ResourcesPanel(
                 onAction = {
                     onInfoRequested(
                         strings["integrations.tasker"].ifEmpty { "Tasker" },
-                        "Your personal token lets Tasker control GAMA while preventing other apps from changing your renderer. Copy it first, then open the step-by-step guide and enter it exactly where shown.",
+                        strings["integrations.tasker_dialog_body"].ifEmpty { "Your personal token lets Tasker control GAMA while preventing other apps from changing your renderer. Copy it first, then open the step-by-step guide and enter it exactly where shown." },
                         TaskerAuth.getOrCreateToken(context),
                         "https://github.com/popovicialinc/gama/blob/main/!assets/GAMA_Tasker_Guide.pdf"
                     )
@@ -251,27 +251,6 @@ fun ResourcesPanel(
                 }
             }
 
-            add {
-                AnimatedElement(visible = visible, cardShadow = true, staggerIndex = links.size + 3, totalItems = totalItems) {
-            IntegrationInfoCard(
-                title = LocalStrings.current["integrations.widget"].ifEmpty { "HOME SCREEN WIDGET" },
-                description = LocalStrings.current["integrations.widget_desc"].ifEmpty { "A Vulkan / OpenGL toggle you can place on your home screen — switch renderers without opening the app" },
-                statusLabel = strings["integrations.widget_status"].ifEmpty { "Available" },
-                statusOk = true,
-                actionLabel = strings["integrations.widget_action"].ifEmpty { "Add widget" },
-                onAction = {
-                    onInfoRequested(
-                        strings["integrations.widget_dialog_title"].ifEmpty { "Adding the Widget" },
-                        strings["integrations.widget_dialog_body"].ifEmpty { "Use the launcher's widget picker, or tap the add button below to open Android's native widget pin sheet when supported. Once placed, the GAMA widget gives you quick renderer switching, live status, and a fast shortcut back into the app." },
-                        null,
-                        null
-                    )
-                },
-                colors = colors, cardBackground = cardBackground,
-                oledMode = oledMode, isSmallScreen = isSmallScreen
-            )
-                }
-            }
         }
         ResponsiveSettingsCardGrid(isLandscape = isLandscape, cards = cards)
     }
@@ -360,13 +339,13 @@ fun VerbosePanel(
                                 .replace("Output: Success", "Success")
                                 .replace(
                                     "Output: Error: process hasn't exited",
-                                    "Command still running — waiting for shell output"
+                                    LocalStrings.current["system.cmd_running"].ifEmpty { "Command still running — waiting for shell output" }
                                 )
                                 .replace(
                                     "Output: Error: command timed out",
-                                    "Command timed out — Shizuku did not return output in time"
+                                    LocalStrings.current["system.cmd_timeout"].ifEmpty { "Command timed out — Shizuku did not return output in time" }
                                 )
-                                .ifEmpty { "No output yet. Run a renderer switch to see verbose logs." },
+                                .ifEmpty { LocalStrings.current["system.no_verbose_output"].ifEmpty { "No output yet. Run a renderer switch to see verbose logs." } },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .verticalScroll(innerScroll)

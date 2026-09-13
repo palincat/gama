@@ -19,48 +19,31 @@ class TaskerRendererWorker(
     override suspend fun doWork(): Result {
         val target = inputData.getString(INPUT_RENDERER) ?: return Result.failure()
         val prefs = applicationContext.getSharedPreferences("gama_prefs", Context.MODE_PRIVATE)
-        // An explicit Tasker aggressive:true request remains supported, while the
-        // normal renderer settings apply consistently to automated switches too.
-        val aggressive = inputData.getBoolean(INPUT_AGGRESSIVE, false) ||
-            prefs.getBoolean("aggressive_mode", false)
-        val killLauncher = prefs.getBoolean("kill_launcher", false)
-        val killKeyboard = prefs.getBoolean("kill_keyboard", false)
+        // Automations are conservative by default. They never inherit the
+        // interactive UI's restart settings; only an explicit Tasker aggressive
+        // extra can restart third-party apps.
+        val aggressive = inputData.getBoolean(INPUT_AGGRESSIVE, false)
         val excludedApps = prefs.getStringSet("excluded_apps", emptySet()) ?: emptySet()
 
-        // Tasker can cold-start GAMA, so root has not necessarily been probed in
-        // this process. A configured Tasker action is an explicit user request.
-        val rootReady = ShizukuHelper.refreshRootAvailability()
-        val shizukuReady = ShizukuHelper.checkBinder() && ShizukuHelper.checkPermission()
-        if (!rootReady && !shizukuReady) return Result.failure()
-
-        val applied = when (target) {
-            RendererState.RENDERER_VULKAN -> ShizukuHelper.runVulkanSuspend(
-                context = applicationContext,
-                aggressiveMode = aggressive,
-                killLauncher = killLauncher,
-                killKeyboard = killKeyboard,
-                excludedApps = excludedApps,
-                targetedApps = emptySet(),
-                onStatusUpdate = {}
-            )
-            RendererState.RENDERER_OPENGL -> ShizukuHelper.runOpenGLSuspend(
-                context = applicationContext,
-                aggressiveMode = aggressive,
-                killLauncher = killLauncher,
-                killKeyboard = killKeyboard,
-                excludedApps = excludedApps,
-                targetedApps = emptySet(),
-                onStatusUpdate = {}
-            )
-            else -> return Result.failure()
+        if (!ShizukuHelper.isBackendReady()) {
+            RendererActionHistory.record(prefs, "Tasker", target, false, "No privileged backend is available.")
+            return Result.failure()
         }
-        if (!applied) return Result.failure()
 
-        RendererState.recordSwitch(
-            prefs,
-            target
+        val result = RendererController.switch(
+            applicationContext,
+            RendererController.Request(
+                target = target,
+                source = "Tasker",
+                aggressiveMode = aggressive,
+                excludedApps = excludedApps
+            )
         )
-        ShizukuHelper.refreshRendererViewSync(applicationContext)
+        if (!result.verified) {
+            RendererActionHistory.record(prefs, "Tasker", target, false, "The renderer property could not be verified.")
+            return Result.failure()
+        }
+
         return Result.success()
     }
 }

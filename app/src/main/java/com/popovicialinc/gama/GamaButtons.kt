@@ -85,6 +85,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick as semanticOnClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -224,6 +227,15 @@ fun FlatButton(
                         ) else Modifier
                 )
                 .then(
+                    Modifier.semantics(mergeDescendants = true) {
+                        role = Role.Button
+                        semanticOnClick(label = text) {
+                            if (enabled) onClick()
+                            enabled
+                        }
+                    }
+                )
+                .then(
                     if (enabled) Modifier.pointerInput(enabled) {
                         detectTapGestures(
                             onPress = {
@@ -244,7 +256,7 @@ fun FlatButton(
                 fontWeight = FontWeight.Bold,
                 color = animatedTextColor,
                 fontFamily = quicksandFontFamily,
-                maxLines = maxLines.coerceAtLeast(3),
+                maxLines = maxLines.coerceAtLeast(1),
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -424,13 +436,19 @@ fun IllustratedButton(
     val shape = RoundedCornerShape(cornerRadius)
 
     val iconDescription = when (iconType) {
-        "vulkan"    -> "Vulkan lightning bolt icon"
-        "opengl"    -> "OpenGL hexagon icon"
-        "resources" -> "Resources list icon"
-        "gpuwatch"  -> "GPU activity waveform icon"
-        else        -> "Button icon"
+        "vulkan"    -> LocalStrings.current["common.icon_vulkan"].ifEmpty { "Vulkan lightning bolt icon" }
+        "opengl"    -> LocalStrings.current["common.icon_opengl"].ifEmpty { "OpenGL hexagon icon" }
+        "resources" -> LocalStrings.current["common.icon_resources"].ifEmpty { "Resources list icon" }
+        "gpuwatch"  -> LocalStrings.current["common.icon_gpuwatch"].ifEmpty { "GPU activity waveform icon" }
+        else        -> LocalStrings.current["common.icon_button"].ifEmpty { "Button icon" }
     }
-    val semanticsLabel = if (enabled) "$iconDescription, $text button" else "$iconDescription, $text button, disabled"
+    val semanticsLabel = if (enabled) {
+        LocalStrings.current["common.semantics_button"].ifEmpty { "%s, %s button" }
+            .replace("%s", iconDescription).replace("%s", text)
+    } else {
+        LocalStrings.current["common.semantics_button_disabled"].ifEmpty { "%s, %s button, disabled" }
+            .replace("%s", iconDescription).replace("%s", text)
+    }
 
     val isRendererIconButton = iconType == "vulkan" || iconType == "opengl"
     val allowWholeButtonGlow = oledMode

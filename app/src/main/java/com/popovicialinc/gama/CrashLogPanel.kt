@@ -102,26 +102,26 @@ internal fun parseGamaCrashLog(raw: String): List<GamaCrashEntry> {
         .sortedByDescending { it.timestamp }
 }
 
-internal fun crashDateFromTimestamp(timestamp: String): String {
-    return timestamp.substringBefore(" ", "unknown date").ifBlank { "unknown date" }
+internal fun crashDateFromTimestamp(timestamp: String, fallback: String = "unknown date"): String {
+    return timestamp.substringBefore(" ", fallback).ifBlank { fallback }
 }
 
-internal fun crashTimeFromTimestamp(timestamp: String): String {
-    return timestamp.substringAfter(" ", "unknown time").ifBlank { "unknown time" }
+internal fun crashTimeFromTimestamp(timestamp: String, fallback: String = "unknown time"): String {
+    return timestamp.substringAfter(" ", fallback).ifBlank { fallback }
 }
 
-internal fun crashDateFromMillis(timeMillis: Long): String {
+internal fun crashDateFromMillis(timeMillis: Long, fallback: String = "unknown date"): String {
     return if (timeMillis > 0L) {
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
             .format(java.util.Date(timeMillis))
-    } else "unknown date"
+    } else fallback
 }
 
-internal fun crashTimeFromMillis(timeMillis: Long): String {
+internal fun crashTimeFromMillis(timeMillis: Long, fallback: String = "unknown time"): String {
     return if (timeMillis > 0L) {
         java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
             .format(java.util.Date(timeMillis))
-    } else "unknown time"
+    } else fallback
 }
 
 @Composable
@@ -262,7 +262,8 @@ fun CrashLogPanel(
     colors: ThemeColors,
     cardBackground: Color,
     oledMode: Boolean,
-    onExportCrashLog: (content: String, fileName: String) -> Unit = { _, _ -> }
+    onExportCrashLog: (content: String, fileName: String) -> Unit = { _, _ -> },
+    onExportSupportBundle: () -> Unit = {}
 ) {
     val ts = LocalTypeScale.current
     val context = LocalContext.current
@@ -271,6 +272,8 @@ fun CrashLogPanel(
     var rawLogExists by remember { mutableStateOf(false) }
     var systemCrashes by remember { mutableStateOf<List<ShizukuHelper.CrashEntry>>(emptyList()) }
     var systemCrashesLoading by remember { mutableStateOf(false) }
+    var pendingSystemExport by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var systemLogsAvailable by remember { mutableStateOf(false) }
 
     // Which detail sub-panel is open: "gama:<index>" or "system:<index>" or null
     var openedEntryKey by remember { mutableStateOf<String?>(null) }
@@ -290,8 +293,16 @@ fun CrashLogPanel(
         rawLogExists = rawText.isNotEmpty()
         gamaCrashes = parseGamaCrashLog(rawText)
 
-        // System dropbox crashes — only attempt if Shizuku is available
-        if (ShizukuHelper.checkBinder() && ShizukuHelper.checkPermission()) {
+        // Resolve backend state once per panel open instead of interrogating
+        // binder/root state while composing every list section.
+        systemLogsAvailable = withContext(Dispatchers.IO) {
+            ShizukuHelper.isRootAvailable() ||
+                (ShizukuHelper.checkBinder() && ShizukuHelper.checkPermission())
+        }
+
+        // System dropbox crashes are available through either already-approved
+        // backend. This must not probe root or display an approval prompt.
+        if (systemLogsAvailable) {
             systemCrashesLoading = true
             systemCrashes = withContext(Dispatchers.IO) {
                 ShizukuHelper.fetchCrashLogs()
@@ -305,19 +316,40 @@ fun CrashLogPanel(
     // after having seen visible=false, so AnimatedElement re-runs its enter cascade.
     val anyDetailOpen = openedEntryKey != null
 
+    pendingSystemExport?.let { (content, fileName) ->
+        AlertDialog(
+            onDismissRequest = { pendingSystemExport = null },
+            title = { Text(LocalStrings.current["crash_log.export_system_title"].ifEmpty { "Export system diagnostic data?" }) },
+            text = {
+                Text(LocalStrings.current["crash_log.export_system_body"].ifEmpty { "System crash logs can contain diagnostic information about other apps and your device. Review the file before sharing it." })
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingSystemExport = null
+                    onExportCrashLog(content, fileName)
+                }) { Text(LocalStrings.current["crash_log.export"].ifEmpty { "Export" }) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSystemExport = null }) { Text(LocalStrings.current["dialogs.btn_cancel"].ifEmpty { "Cancel" }) }
+            }
+        )
+    }
+
     // ── Detail panels (one per entry type) ───────────────────────────────────
     // Each detail panel gets its own BackHandler so the system back press only
     // closes the detail, never the whole crash log behind it.
-    gamaCrashes.forEachIndexed { idx, entry ->
-        val isThisOpen = openedEntryKey == "gama:$idx"
-        BackHandler(enabled = isThisOpen) { openedEntryKey = null }
+    val openedGamaIndex = openedEntryKey?.takeIf { it.startsWith("gama:") }
+        ?.substringAfter(":")?.toIntOrNull()
+    val openedGamaEntry = openedGamaIndex?.let { gamaCrashes.getOrNull(it) }
+    if (openedGamaIndex != null && openedGamaEntry != null) {
+        BackHandler(enabled = true) { openedEntryKey = null }
         CrashDetailPanel(
-            visible       = isThisOpen,
+            visible       = true,
             onDismiss     = { openedEntryKey = null },
-            title         = "${LocalStrings.current["crash_log.gama_section"].ifEmpty { "GAMA LOGS" }.removeSuffix("S")} #${(idx + 1).toString().padStart(3, '0')}",
-            date          = crashDateFromTimestamp(entry.timestamp),
-            time          = crashTimeFromTimestamp(entry.timestamp),
-            fullText      = entry.fullText,
+            title         = "${LocalStrings.current["crash_log.gama_section"].ifEmpty { "GAMA LOGS" }.removeSuffix("S")} #${(openedGamaIndex + 1).toString().padStart(3, '0')}",
+            date          = crashDateFromTimestamp(openedGamaEntry.timestamp, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
+            time          = crashTimeFromTimestamp(openedGamaEntry.timestamp, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
+            fullText      = openedGamaEntry.fullText,
             isSystemUI    = false,
             isSmallScreen = isSmallScreen,
             isLandscape   = isLandscape,
@@ -326,17 +358,19 @@ fun CrashLogPanel(
             oledMode      = oledMode
         )
     }
-    systemCrashes.forEachIndexed { idx, entry ->
-        val isThisOpen = openedEntryKey == "system:$idx"
-        BackHandler(enabled = isThisOpen) { openedEntryKey = null }
+    val openedSystemIndex = openedEntryKey?.takeIf { it.startsWith("system:") }
+        ?.substringAfter(":")?.toIntOrNull()
+    val openedSystemEntry = openedSystemIndex?.let { systemCrashes.getOrNull(it) }
+    if (openedSystemIndex != null && openedSystemEntry != null) {
+        BackHandler(enabled = true) { openedEntryKey = null }
         CrashDetailPanel(
-            visible       = isThisOpen,
+            visible       = true,
             onDismiss     = { openedEntryKey = null },
-            title         = "${LocalStrings.current["crash_log.system_section"].ifEmpty { "SYSTEM LOGS" }.removeSuffix("S")} #${(idx + 1).toString().padStart(3, '0')}",
-            date          = crashDateFromMillis(entry.timeMillis),
-            time          = crashTimeFromMillis(entry.timeMillis),
-            fullText      = entry.fullText,
-            isSystemUI    = entry.isSystemUI,
+            title         = "${LocalStrings.current["crash_log.system_section"].ifEmpty { "SYSTEM LOGS" }.removeSuffix("S")} #${(openedSystemIndex + 1).toString().padStart(3, '0')}",
+            date          = crashDateFromMillis(openedSystemEntry.timeMillis, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
+            time          = crashTimeFromMillis(openedSystemEntry.timeMillis, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
+            fullText      = openedSystemEntry.fullText,
+            isSystemUI    = openedSystemEntry.isSystemUI,
             isSmallScreen = isSmallScreen,
             isLandscape   = isLandscape,
             colors        = colors,
@@ -354,7 +388,7 @@ fun CrashLogPanel(
     // Compute a stable total item count up-front so every AnimatedElement in
     // this panel shares the same value (required for the exit stagger to work).
     val gamaCount   = gamaCrashes.size
-    val systemCount = if (!systemCrashesLoading && ShizukuHelper.checkBinder() && ShizukuHelper.checkPermission())
+    val systemCount = if (!systemCrashesLoading && systemLogsAvailable)
         systemCrashes.size.coerceAtMost(20) else 0
     // Slots: 1 section header + gamaCount cards (or 1 empty card) + clear button
     //      + 1 section header + systemCount cards (or 1 status card)
@@ -372,6 +406,15 @@ fun CrashLogPanel(
         colors    = colors
     ) { _ ->
         CleanTitle(text = LocalStrings.current["crash_log.title"].ifEmpty { "LOGS" }, fontSize = if (isLandscape) ts.displayMedium else ts.displayLarge, colors = colors)
+
+        FlatButton(
+            text = LocalStrings.current["crash_log.export_support_bundle"].ifEmpty { "Export support bundle" },
+            onClick = onExportSupportBundle,
+            modifier = Modifier.fillMaxWidth(),
+            accent = true,
+            colors = colors,
+            maxLines = 1
+        )
 
         // ── GAMA crashes section header ───────────────────────────────────────
         AnimatedElement(visible = listItemsVisible, staggerIndex = 0, totalItems = totalListItems) {
@@ -409,10 +452,11 @@ fun CrashLogPanel(
                 AnimatedElement(visible = listItemsVisible, staggerIndex = idx + 1, totalItems = totalListItems) {
                     CrashLogEntryCard(
                         title = "${LocalStrings.current["crash_log.gama_section"].ifEmpty { "GAMA LOGS" }.removeSuffix("S")} #${(idx + 1).toString().padStart(3, '0')}",
-                        sourceLabel = "APP CRASH • ${entry.thread.uppercase()}",
-                        date = crashDateFromTimestamp(entry.timestamp),
-                        time = crashTimeFromTimestamp(entry.timestamp),
-                        summary = entry.summary,
+                        sourceLabel = LocalStrings.current["crash_log.app_crash"].ifEmpty { "APP CRASH" } + " • ${entry.thread.uppercase()}",
+                        date = crashDateFromTimestamp(entry.timestamp, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
+                        time = crashTimeFromTimestamp(entry.timestamp, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
+                        summary = entry.summary.takeUnless { it == "No details" }
+                            ?: LocalStrings.current["crash_log.no_details"].ifEmpty { "No details" },
                         onSave = { onExportCrashLog(entry.fullText, "GAMA_crash_${entry.timestamp.replace(" ", "_").replace(":", "-")}.txt") },
                         onView = { openedEntryKey = "gama:$idx" },
                         isSmallScreen = isSmallScreen,
@@ -457,7 +501,7 @@ fun CrashLogPanel(
                     CircularProgressIndicator(color = colors.primaryAccent, modifier = Modifier.size(28.dp))
                 }
             }
-            !ShizukuHelper.checkBinder() || !ShizukuHelper.checkPermission() -> {
+            !systemLogsAvailable -> {
                 AnimatedElement(visible = listItemsVisible, staggerIndex = systemHeaderIdx + 1, totalItems = totalListItems) {
                     Box(modifier = Modifier.fillMaxWidth()
                         .border(1.dp, colors.primaryAccent.copy(alpha = 0.55f), RoundedCornerShape(28.dp))
@@ -469,7 +513,7 @@ fun CrashLogPanel(
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
                             Text(
-                                text = LocalStrings.current["crash_log.shizuku_required"].ifEmpty { "Shizuku required to read system crash logs." },
+                                text = LocalStrings.current["crash_log.shizuku_required"].ifEmpty { "Shizuku or approved root access is required to read system crash logs." },
                                 modifier = Modifier.fillMaxWidth().padding(20.dp),
                                 fontSize = ts.labelSmall, fontFamily = quicksandFontFamily,
                                 color = colors.textSecondary, fontWeight = FontWeight.Bold
@@ -515,10 +559,14 @@ fun CrashLogPanel(
                         CrashLogEntryCard(
                             title = "${LocalStrings.current["crash_log.system_section"].ifEmpty { "SYSTEM LOGS" }.removeSuffix("S")} #${(idx + 1).toString().padStart(3, '0')}",
                             sourceLabel = entry.tag.uppercase(),
-                            date = crashDateFromMillis(entry.timeMillis),
-                            time = crashTimeFromMillis(entry.timeMillis),
-                            summary = entry.summary,
-                            onSave = { onExportCrashLog(entry.fullText, "GAMA_system_crash_${entry.tag}_$fileTimestamp.txt") },
+                            date = crashDateFromMillis(entry.timeMillis, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
+                            time = crashTimeFromMillis(entry.timeMillis, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
+                            summary = entry.summary.takeUnless { it == "No details" }
+                                ?: LocalStrings.current["crash_log.no_details"].ifEmpty { "No details" },
+                            onSave = {
+                                pendingSystemExport = entry.fullText to
+                                    "GAMA_system_crash_${entry.tag}_$fileTimestamp.txt"
+                            },
                             onView = { openedEntryKey = "system:$idx" },
                             isSmallScreen = isSmallScreen,
                             colors = if (entry.isSystemUI)

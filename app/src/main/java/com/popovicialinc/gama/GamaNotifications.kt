@@ -110,13 +110,9 @@ import kotlin.math.roundToInt
 
 // ── Localization helper for non-composable notification functions ─────────────
 private fun Context.notifString(section: String, key: String, fallback: String): String {
-    return try {
-        val prefs = getSharedPreferences("gama_prefs", android.content.Context.MODE_PRIVATE)
-        val code = prefs.getString("selected_language", "en") ?: "en"
-        if (code == "en") return fallback
-        val raw = assets.open("translations/$code.json").bufferedReader().readText()
-        org.json.JSONObject(raw).optJSONObject(section)?.optString(key)?.takeIf { it.isNotEmpty() } ?: fallback
-    } catch (_: Exception) { fallback }
+    val code = getSharedPreferences("gama_prefs", android.content.Context.MODE_PRIVATE)
+        .getString("selected_language", "en") ?: "en"
+    return LocalizationManager.getStringBlocking(this, code, section, key, fallback)
 }
 
 
@@ -138,10 +134,10 @@ fun sendBootNotification(
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val channel = NotificationChannel(
             channelId,
-            "GAMA Notifications",
+            context.notifString("notification", "channel_alerts_name", "GAMA Notifications"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Notifications from GAMA"
+            description = context.notifString("notification", "channel_alerts_desc", "Notifications from GAMA")
             enableVibration(true)
             enableLights(true)
         }
@@ -180,9 +176,14 @@ fun sendOpenGLReminderNotification(context: Context, userName: String = ""): Boo
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val ch = NotificationChannel(
-            channelId, "Renderer Reminders", NotificationManager.IMPORTANCE_DEFAULT
+            channelId,
+            context.notifString("notification", "channel_reminders_name", "Renderer Reminders"),
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
-            description = "Periodic reminders to switch to Vulkan when OpenGL is active"
+            description = context.notifString(
+                "notification", "channel_reminders_desc",
+                "Periodic reminders to switch to Vulkan when OpenGL is active"
+            )
             enableVibration(false)
         }
         nm.createNotificationChannel(ch)

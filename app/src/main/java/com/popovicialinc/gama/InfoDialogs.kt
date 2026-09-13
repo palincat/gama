@@ -116,6 +116,7 @@ fun ShizukuHelpDialog(
     rootAvailable: Boolean = false
 ) {
     val ts = LocalTypeScale.current
+    val strings = LocalStrings.current
     val dialogBorderAlpha = 0.55f  // matches SettingsNavigationCard (APPEARANCE button)
     val dialogBorderWidth = 1.dp
     val dialogShape = RoundedCornerShape(40.dp)
@@ -130,14 +131,11 @@ fun ShizukuHelpDialog(
         isSmallScreen -> 14.dp
         else -> 18.dp
     }
-    // Shizuku already on this device? Decides whether the primary action is
-    // "download & install" or "open the app". Updated to true once a download
-    // completes, so the panel transitions to the "installed" view on the spot.
-    var shizukuInstalled by remember {
-        mutableStateOf(
-            runCatching { context.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0) }.isSuccess
-        )
-    }
+    // Official Shizuku remains the preferred manager. Shevery is detected as
+    // an optional compatible implementation and is never downloaded by GAMA.
+    var installedBackend by remember { mutableStateOf(ShizukuBackend.installed(context)) }
+    val backendName = installedBackend?.displayName ?: "Shizuku"
+    val shizukuInstalled = installedBackend != null
 
     BouncyDialog(visible = visible, onDismiss = onDismiss) {
     BoxWithConstraints(
@@ -179,7 +177,10 @@ fun ShizukuHelpDialog(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (helpType == "not_running") "Shizuku isn't running" else "Permission Needed",
+                    text = if (helpType == "not_running")
+                        strings["dialogs.backend_not_running_title"].ifEmpty { "%s isn't running" }
+                            .replace("%s", backendName)
+                    else strings["dialogs.backend_permission_title"].ifEmpty { "Permission Needed" },
                     fontSize = if (isLandscape) ts.headlineMedium else ts.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     fontFamily = quicksandFontFamily,
@@ -190,9 +191,13 @@ fun ShizukuHelpDialog(
             // ── One-line intro — what the user needs to do, in a nutshell ──
             Text(
                 text = if (helpType == "not_running")
-                    "GAMA needs the Shizuku service running to switch the renderer."
+                    strings["dialogs.backend_intro_not_running"]
+                        .ifEmpty { "GAMA needs the %s service running to switch the renderer." }
+                        .replace("%s", backendName)
                 else
-                    "GAMA is installed, but hasn't been authorized in Shizuku yet.",
+                    strings["dialogs.backend_intro_permission"]
+                        .ifEmpty { "GAMA is installed, but hasn't been authorized in %s yet." }
+                        .replace("%s", backendName),
                 fontSize = ts.bodyMedium,
                 lineHeight = (ts.bodyMedium.value * 1.4f).sp,
                 color = colors.textSecondary,
@@ -204,7 +209,7 @@ fun ShizukuHelpDialog(
 
             if (helpType == "not_running") {
                 // ── Primary action: download (missing) or open (installed) ──
-                if (!shizukuInstalled) {
+                if (BuildConfig.CAN_INSTALL_SHIZUKU && !shizukuInstalled) {
                     val scope = rememberCoroutineScope()
                     var installPhase by remember { mutableStateOf(0) } // 0 idle · 1 consent · 2 downloading · 3 installing · 4 installed · -1 failed
                     var installProgress by remember { mutableStateOf(0f) }
@@ -247,7 +252,7 @@ fun ShizukuHelpDialog(
                             installPhase = 2
                             when (val installResult = ShizukuInstaller.installApk(context, result.apkFile)) {
                                 is InstallResult.Installed -> {
-                                    shizukuInstalled = true
+                                    installedBackend = ShizukuBackend.Kind.OFFICIAL
                                     installPhase = 3
                                 }
                                 is InstallResult.Cancelled -> {
@@ -335,22 +340,45 @@ fun ShizukuHelpDialog(
                 }
 
                 // ── Steps — numbered, so the path is obvious ──
-                DialogSectionLabel("How to start Shizuku", colors = colors)
+                DialogSectionLabel(
+                    strings["dialogs.backend_how_to_start"].ifEmpty { "How to start %s" }.replace("%s", backendName),
+                    colors = colors
+                )
                 if (!shizukuInstalled) {
-                    DialogStepRow(1, "Install Shizuku with the button above", colors = colors)
-                    DialogStepRow(2, "Open Shizuku and tap \"Start\"", colors = colors)
-                    DialogStepRow(3, "Come back to GAMA", colors = colors)
+                    DialogStepRow(
+                        1,
+                        if (BuildConfig.CAN_INSTALL_SHIZUKU) {
+                            strings["dialogs.backend_step_install_button"].ifEmpty { "Install %s with the button above" }
+                                .replace("%s", backendName)
+                        } else {
+                            strings["dialogs.backend_step_install_manual"].ifEmpty { "Install %s from its official source, then return to GAMA" }
+                                .replace("%s", backendName)
+                        },
+                        colors = colors
+                    )
+                    DialogStepRow(
+                        2,
+                        strings["dialogs.backend_step_open_start"].ifEmpty { "Open %s and tap \"Start\"" }
+                            .replace("%s", backendName),
+                        colors = colors
+                    )
+                    DialogStepRow(3, strings["dialogs.backend_step_come_back"].ifEmpty { "Come back to GAMA" }, colors = colors)
                 } else {
-                    DialogStepRow(1, "Tap \"Start\" inside the Shizuku app", colors = colors)
-                    DialogStepRow(2, "Come back to GAMA", colors = colors)
+                    DialogStepRow(
+                        1,
+                        strings["dialogs.backend_step_tap_start"].ifEmpty { "Tap \"Start\" inside the %s app" }
+                            .replace("%s", backendName),
+                        colors = colors
+                    )
+                    DialogStepRow(2, strings["dialogs.backend_step_come_back"].ifEmpty { "Come back to GAMA" }, colors = colors)
                 }
 
                 if (shizukuInstalled) {
                     DialogButton(
-                        text = LocalStrings.current["dialogs.btn_open_shizuku"].ifEmpty { "Open Shizuku" },
+                        text = strings["dialogs.backend_open"].ifEmpty { "Open %s" }.replace("%s", backendName),
                         onClick = {
                             context.packageManager
-                                .getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                                .getLaunchIntentForPackage(installedBackend!!.packageName)
                                 ?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                             onDismiss()
                         },
@@ -364,7 +392,9 @@ fun ShizukuHelpDialog(
 
                 // ── Troubleshooting footnote ──
                 Text(
-                    text = "Shizuku won't start? Follow the wireless debugging instructions inside the Shizuku app.",
+                    text = strings["dialogs.backend_troubleshoot"]
+                        .ifEmpty { "%s won't start? Follow its wireless debugging instructions, then return to GAMA." }
+                        .replace("%s", backendName),
                     fontSize = ts.bodySmall,
                     lineHeight = (ts.bodySmall.value * 1.3f).sp,
                     color = colors.textSecondary,
@@ -375,17 +405,25 @@ fun ShizukuHelpDialog(
                 )
             } else {
                 // ── "Permission Needed" — same numbered-step treatment ──
-                DialogSectionLabel("Authorize GAMA", colors = colors)
-                DialogStepRow(1, "Open the Shizuku app", colors = colors)
-                DialogStepRow(2, "Tap \"Authorized applications\"", colors = colors)
-                DialogStepRow(3, "Enable GAMA", colors = colors)
-                DialogStepRow(4, "Reopen GAMA from your recents", colors = colors)
+                DialogSectionLabel(strings["dialogs.backend_authorize"].ifEmpty { "Authorize GAMA" }, colors = colors)
+                DialogStepRow(
+                    1,
+                    strings["dialogs.backend_step_open_app"].ifEmpty { "Open the %s app" }.replace("%s", backendName),
+                    colors = colors
+                )
+                DialogStepRow(
+                    2,
+                    strings["dialogs.backend_step_authorized_apps"].ifEmpty { "Tap \"Authorized applications\"" },
+                    colors = colors
+                )
+                DialogStepRow(3, strings["dialogs.backend_step_enable_gama"].ifEmpty { "Enable GAMA" }, colors = colors)
+                DialogStepRow(4, strings["dialogs.backend_step_reopen"].ifEmpty { "Reopen GAMA from your recents" }, colors = colors)
                 if (shizukuInstalled) {
                     DialogButton(
-                        text = LocalStrings.current["dialogs.btn_open_shizuku"].ifEmpty { "Open Shizuku" },
+                        text = strings["dialogs.backend_open"].ifEmpty { "Open %s" }.replace("%s", backendName),
                         onClick = {
                             context.packageManager
-                                .getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                                .getLaunchIntentForPackage(installedBackend!!.packageName)
                                 ?.let { context.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                             onDismiss()
                         },
@@ -401,7 +439,9 @@ fun ShizukuHelpDialog(
             // ── Root alternative — only relevant when neither backend is ready ──
             if (!rootAvailable) {
                 Text(
-                    text = "Device rooted? GAMA also works with root access (Magisk / KernelSU) — no Shizuku needed.",
+                    text = strings["dialogs.backend_root_hint"]
+                        .ifEmpty { "Device rooted? GAMA also works with root access (Magisk / KernelSU) — no %s needed." }
+                        .replace("%s", backendName),
                     fontSize = ts.bodySmall,
                     lineHeight = (ts.bodySmall.value * 1.3f).sp,
                     color = colors.textSecondary,
@@ -486,6 +526,7 @@ fun EasterEggDialog(
     isSmallScreen: Boolean
 ) {
     val ts = LocalTypeScale.current
+    val strings = LocalStrings.current
     val animLevel = LocalAnimationLevel.current
     val dialogShape = RoundedCornerShape(28.dp)
     BouncyDialog(visible = visible, onDismiss = onDismiss) {
@@ -575,7 +616,7 @@ fun EasterEggDialog(
                         verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         Text(
-                            text = "ACCESS GRANTED // 01",
+                            text = strings["dialogs.egg_access_granted"].ifEmpty { "ACCESS GRANTED // 01" },
                             fontSize = ts.labelSmall,
                             fontWeight = FontWeight.Bold,
                             fontFamily = quicksandFontFamily,
@@ -649,7 +690,7 @@ fun EasterEggDialog(
 
                         // ── Main copy ─────────────────────────────────────────
                         Text(
-                            text = "THE UNNECESSARY\nCONTROL ROOM",
+                            text = strings["dialogs.egg_control_room"].ifEmpty { "THE UNNECESSARY\nCONTROL ROOM" },
                             fontSize = ts.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             fontFamily = quicksandFontFamily,
@@ -661,7 +702,7 @@ fun EasterEggDialog(
                         Spacer(Modifier.height(if (isSmallScreen) 16.dp else 22.dp))
 
                         Text(
-                            text = "One long press. One small secret.\nZero extra permissions.",
+                            text = strings["dialogs.egg_tagline"].ifEmpty { "One long press. One small secret.\nZero extra permissions." },
                             fontSize = ts.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = quicksandFontFamily,
@@ -673,7 +714,7 @@ fun EasterEggDialog(
                         Spacer(Modifier.height(if (isSmallScreen) 8.dp else 10.dp))
 
                         Text(
-                            text = "You were never supposed to find this.\n(We hoped you would.)",
+                            text = strings["dialogs.egg_secret"].ifEmpty { "You were never supposed to find this.\n(We hoped you would.)" },
                             fontSize = ts.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             fontFamily = quicksandFontFamily,
@@ -697,7 +738,7 @@ fun EasterEggDialog(
 
                         // ── Dismiss button ────────────────────────────────────
                         DialogButton(
-                            text = "RETURN TO GAMA",
+                            text = strings["dialogs.egg_return"].ifEmpty { "RETURN TO GAMA" },
                             onClick = onDismiss,
                             modifier = Modifier.fillMaxWidth(),
                             colors = colors,

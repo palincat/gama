@@ -6,11 +6,19 @@
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
     <!-- Required to download the Shizuku APK from the official GitHub releases. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Required to launch the system package installer for the Shizuku APK -->
-    <!-- that GAMA downloads from the official RikkaApps GitHub releases.     -->
+    <!-- Used only by the GitHub distribution to launch the installer for the
+         Shizuku APK downloaded from the official RikkaApps releases. The Play
+         flavor removes this restricted permission in its manifest overlay. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Android 11+ package visibility for the supported Shizuku-compatible
+         managers. Official Shizuku remains the default; Shevery is optional. -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="com.hamondev.shevery" />
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -29,6 +37,7 @@
             android:name="moe.shizuku.client.V3_SUPPORT"
             android:value="true" />
 
+        <!-- Exported because Android must launch the app from the launcher icon. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,6 +51,8 @@
         </activity>
 
         <!-- ── Shizuku registration ──────────────────────────────────────── -->
+        <!-- Exported for the Shizuku client handshake; protected by Shizuku's
+             cross-user interaction permission and fixed authority. -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
@@ -51,6 +62,8 @@
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- ── Tasker Integration ────────────────────────────────────────── -->
+        <!-- Exported intentionally: Tasker sends the authenticated renderer
+             command through this receiver; TaskerAuth rejects unknown callers. -->
         <receiver
             android:name=".TaskerReceiver"
             android:exported="true">
@@ -60,6 +73,8 @@
         </receiver>
 
         <!-- ── Boot Receiver — re-applies renderer prop after every reboot ── -->
+        <!-- Exported because Android delivers BOOT_COMPLETED broadcasts to it;
+             it accepts only the documented system boot actions. -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
@@ -72,6 +87,8 @@
         </receiver>
 
         <!-- ── Quick Settings Tile: Renderer toggle (Vulkan ↔ OpenGL) ────── -->
+        <!-- Exported because SystemUI binds QS tile services through this
+             action; the framework enforces BIND_QUICK_SETTINGS_TILE. -->
         <service
             android:name=".RendererToggleTileService"
             android:exported="true"
@@ -83,17 +100,6 @@
             </intent-filter>
         </service>
 
-        <receiver
-            android:name=".GamaWidgetReceiver"
-            android:exported="true"
-            android:label="GAMA">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/gama_widget_info" />
-        </receiver>
 
     </application>
 

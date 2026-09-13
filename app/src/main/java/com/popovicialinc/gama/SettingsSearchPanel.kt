@@ -1749,7 +1749,7 @@ fun SettingsSearchPanel(
                     title = tr("renderer.aggressive_mode", "AGGRESSIVE MODE"),
                     description = tr(
                         "renderer.aggressive_mode_desc",
-                        "Applies the renderer to every installed package — broader coverage, but read the warning before enabling"
+                        "Restarts third-party apps only so they pick up the renderer — read the warning first"
                     ),
                     checked = aggressiveMode,
                     onCheckedChange = { performHaptic(); onAggressiveModeChange(it) },
@@ -1763,7 +1763,7 @@ fun SettingsSearchPanel(
         },
         SettingsSearchItem(
             id = "restart_launcher",
-            title = tr("renderer.kill_launcher", "RESTART LAUNCHER ON SWITCH"),
+            title = tr("renderer.kill_launcher", "RESTART LAUNCHER & SYSTEM UI"),
             keywords = listOf(
                 "restart",
                 "launcher",
@@ -1779,10 +1779,10 @@ fun SettingsSearchPanel(
         ) {
             Column {
                 ToggleCard(
-                    title = tr("renderer.kill_launcher", "RESTART LAUNCHER ON SWITCH"),
+                    title = tr("renderer.kill_launcher", "RESTART LAUNCHER & SYSTEM UI"),
                     description = tr(
-                        "text_catalog.force_stops_the_launcher_after_switching_so_it_picks_up_the_",
-                        "Force-stops the launcher after switching so it picks up the new renderer immediately — leave off on Xiaomi / MIUI"
+                        "renderer.kill_launcher_desc",
+                        "Restarts the launcher and System UI after switching — leave off on Xiaomi / MIUI"
                     ),
                     checked = killLauncher,
                     onCheckedChange = { performHaptic(); onKillLauncherChange(it) },

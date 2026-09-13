@@ -95,15 +95,23 @@ class BackupHelperTest {
                 BackupHelper.isRegisteredStringSetKey(key) ->
                     e.putStringSet(key, setOf("a_$i", "b_$i"))
                 BackupHelper.isRegisteredStringKey(key) ->
-                    e.putString(key, "value_$key")
+                    e.putString(
+                        key,
+                        when (key) {
+                            RendererState.PREF_LAST_RENDERER,
+                            RendererState.PREF_DESIRED_RENDERER -> RendererState.RENDERER_VULKAN
+                            "selected_language" -> "en"
+                            else -> "value_$key"
+                        }
+                    )
                 BackupHelper.isRegisteredFloatKey(key) ->
-                    e.putFloat(key, 0.5f + i)
+                    e.putFloat(key, 0.5f)
                 BackupHelper.isRegisteredLongKey(key) ->
                     e.putLong(key, 1_700_000_000_000L + i)
                 BackupHelper.isRegisteredBooleanKey(key) ->
                     e.putBoolean(key, i % 2 == 0)
                 else ->
-                    e.putInt(key, 100 + i)
+                    e.putInt(key, 1)
             }
         }
         e.commit()
@@ -118,15 +126,24 @@ class BackupHelperTest {
                 BackupHelper.isRegisteredStringSetKey(key) ->
                     assertEquals("set $key", setOf("a_$i", "b_$i"), target.getStringSet(key, null))
                 BackupHelper.isRegisteredStringKey(key) ->
-                    assertEquals("string $key", "value_$key", target.getString(key, null))
+                    assertEquals(
+                        "string $key",
+                        when (key) {
+                            RendererState.PREF_LAST_RENDERER,
+                            RendererState.PREF_DESIRED_RENDERER -> RendererState.RENDERER_VULKAN
+                            "selected_language" -> "en"
+                            else -> "value_$key"
+                        },
+                        target.getString(key, null)
+                    )
                 BackupHelper.isRegisteredFloatKey(key) ->
-                    assertEquals("float $key", 0.5f + i, target.getFloat(key, -1f), 0.0001f)
+                    assertEquals("float $key", 0.5f, target.getFloat(key, -1f), 0.0001f)
                 BackupHelper.isRegisteredLongKey(key) ->
                     assertEquals("long $key", 1_700_000_000_000L + i, target.getLong(key, -1L))
                 BackupHelper.isRegisteredBooleanKey(key) ->
                     assertEquals("bool $key", i % 2 == 0, target.getBoolean(key, !true))
                 else ->
-                    assertEquals("int $key", 100 + i, target.getInt(key, -1))
+                    assertEquals("int $key", 1, target.getInt(key, -1))
             }
         }
         assertTrue(summary.startsWith("Restored"))
@@ -151,6 +168,16 @@ class BackupHelperTest {
         val summary = BackupHelper.import(prefs, v1Json)
         assertEquals("Old", prefs.getString("user_name", ""))
         assertTrue(summary.contains("Restored"))
+    }
+
+    @Test
+    fun `import rejects backups from a newer schema`() = kotlinx.coroutines.runBlocking {
+        try {
+            BackupHelper.import(FakePrefs(), """{"gama_backup_version":999}""")
+            throw AssertionError("Expected IllegalArgumentException")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message!!.contains("newer"))
+        }
     }
 
     @Test
@@ -197,5 +224,15 @@ class BackupHelperTest {
         assertFalse(json.contains("notif_perm_requested"))
         assertFalse(json.contains("button_labels_shown"))
         assertFalse(json.contains("prefs_version"))
+    }
+
+    @Test
+    fun `import skips oversized excluded app entries`() = kotlinx.coroutines.runBlocking {
+        val huge = "x".repeat(257)
+        val summary = BackupHelper.import(
+            FakePrefs(),
+            """{"gama_backup_version":2,"excluded_apps":["$huge"]}"""
+        )
+        assertTrue(summary.contains("invalid entries skipped"))
     }
 }

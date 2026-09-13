@@ -36,7 +36,11 @@ class TaskerReceiver : BroadcastReceiver() {
             "vulkan" -> RendererState.RENDERER_VULKAN
             "opengl" -> RendererState.RENDERER_OPENGL
             else -> {
-                Toast.makeText(context, "GAMA: use renderer:vulkan or renderer:opengl", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    localizedString(context, "dialogs", "tasker_bad_renderer", "GAMA: use renderer:vulkan or renderer:opengl"),
+                    Toast.LENGTH_SHORT
+                ).show()
                 return
             }
         }

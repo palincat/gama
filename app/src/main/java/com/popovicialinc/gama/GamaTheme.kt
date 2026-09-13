@@ -197,20 +197,10 @@ fun rememberAdaptiveType(): AdaptiveTypeScale {
             else -> 1.05f   // ldpi — needs help
         }
 
-        // ── Font scale: the user may have set a large/small system font.
-        // We apply it at 0.75 weight so GAMA's layout stays stable while still
-        // honouring large-font accessibility preferences more faithfully.
-        // Users who set fontScale ≥ 1.5–1.8× for low-vision reasons previously
-        // received text that was up to 30% smaller than their OS preference intended;
-        // 0.75 weight closes roughly half of that gap without breaking the layout.
-        val accessibilityWeight = 0.75f
-        val accessibilityScale = 1f + (fontScale - 1f) * accessibilityWeight
-
-        // ── Combined multiplier, clamped.
-        // The ceiling is widened from 1.25 → 1.35 so that the accessibility scale
-        // of a fontScale=1.8 user (accessibilityScale ≈ 1.60) can reach 1.35 rather
-        // than being hard-capped at 1.25 on a reference-density phone.
-        val m = (layoutScale * dpiNudge * accessibilityScale).coerceIn(0.85f, 1.35f)
+        // TextUnit.sp is resolved through LocalDensity below, where Android's
+        // accessibility fontScale is already applied. Do not multiply it here:
+        // doing so made large system fonts scale twice.
+        val m = (layoutScale * dpiNudge).coerceIn(0.85f, 1.25f)
 
         fun Float.s() = (this * m).coerceIn(8f, 72f).sp
 

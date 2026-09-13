@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -20,6 +21,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import rikka.shizuku.Shizuku
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -103,61 +107,13 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {}
 
-        // ── Request maximum display refresh rate ──────────────────────────────
-        // On LTPO / adaptive-sync panels (Galaxy S23 Ultra, Pixel Fold, etc.)
-        // `Display.getRefreshRate()` returns the *current* live rate, which the
-        // OS adaptive governor can idle all the way down to 1–60 Hz when no
-        // explicit preference is set.  The two window-attribute fields below are
-        // the official Android API for telling SurfaceFlinger "this window wants
-        // the panel's maximum rate":
-        //
-        //   preferredRefreshRate    (API 23+) — a soft Hz hint; honoured when the
-        //       system has capacity and the display supports the rate.
-        //   preferredDisplayModeId  (API 26+) — a stronger mode-level request that
-        //       also pins resolution, not just Hz.  Takes precedence over the Hz hint
-        //       and is what the Android docs recommend for smooth-animation apps.
-        //
-        // We resolve the best mode from Display.getSupportedModes() — the only
-        // reliable source of the hardware ceiling on all API levels — and set both
-        // fields so older and newer devices each get the strongest applicable signal.
-        //
-        // This does NOT force 120 Hz system-wide; it only raises the governor's
-        // target for this window.  Battery Saver and the system frame-pacing
-        // subsystem can still override it if the device is thermally throttled.
-        try {
-            val supportedModes: Array<android.view.Display.Mode>? =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    display?.supportedModes
-                } else {
-                    @Suppress("DEPRECATION")
-                    windowManager.defaultDisplay?.supportedModes
-                }
-            // Prefer the fastest mode at the current resolution. Some devices
-            // expose their highest refresh rate only at a lower resolution;
-            // selecting that mode would unexpectedly change display scaling.
-            @Suppress("DEPRECATION")
-            val currentDisplay = windowManager.defaultDisplay
-            val currentMode = supportedModes?.firstOrNull { it.modeId == currentDisplay?.mode?.modeId }
-            val sameResolutionModes = currentMode?.let { mode ->
-                supportedModes.filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }
-            }.orEmpty()
-            val bestMode = (sameResolutionModes.ifEmpty { supportedModes?.toList().orEmpty() })
-                .maxByOrNull { it.refreshRate }
-            if (bestMode != null) {
-                val attrs = window.attributes
-                // API 23+: soft Hz hint
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    attrs.preferredRefreshRate = bestMode.refreshRate
-                }
-                // API 26+: hard mode-ID request (includes resolution + Hz)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    attrs.preferredDisplayModeId = bestMode.modeId
-                }
-                window.attributes = attrs
-            }
-        } catch (_: Exception) {}
+        // Leave refresh-rate selection to Android's adaptive/system governor.
+        // The app's animation and particle loops pace themselves from the
+        // display they actually receive, so a settings utility does not keep an
+        // LTPO panel at its maximum rate while the UI is idle.
 
         setContent {
+            val scope = rememberCoroutineScope()
             val prefs = remember {
                 getSharedPreferences("gama_prefs", android.content.Context.MODE_PRIVATE)
             }
@@ -178,14 +134,26 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.CreateDocument("application/json")
             ) { uri ->
                 val content = pendingBackupContent ?: return@rememberLauncherForActivityResult
-                uri?.let {
-                    try {
-                        contentResolver.openOutputStream(it)?.use { out ->
-                            out.write(content.toByteArray(Charsets.UTF_8))
-                        }
-                    } catch (_: Exception) {}
-                }
                 pendingBackupContent = null
+                if (uri == null) {
+                    Toast.makeText(this@MainActivity, localizedString(this@MainActivity, "backup", "backup_export_cancelled", "Backup export cancelled"), Toast.LENGTH_SHORT).show()
+                    return@rememberLauncherForActivityResult
+                }
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) {
+                        runCatching {
+                            contentResolver.openOutputStream(uri)?.use { out ->
+                                out.write(content.toByteArray(Charsets.UTF_8))
+                            } ?: error("Could not open the selected file")
+                        }.isSuccess
+                    }
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (saved) localizedString(this@MainActivity, "backup", "saved", "Backup saved")
+                        else localizedString(this@MainActivity, "backup", "save_failed", "Could not save backup"),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
 
             // ── Restore: SAF file open ────────────────────────────────────────
@@ -194,14 +162,29 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.OpenDocument()
             ) { uri ->
                 val cb = pendingRestoreCallback ?: return@rememberLauncherForActivityResult
-                uri?.let {
-                    try {
-                        val text = contentResolver.openInputStream(it)
-                            ?.bufferedReader(Charsets.UTF_8)?.readText() ?: return@let
-                        cb(text)
-                    } catch (_: Exception) {}
-                }
                 pendingRestoreCallback = null
+                if (uri == null) return@rememberLauncherForActivityResult
+                scope.launch {
+                    val text = withContext(Dispatchers.IO) {
+                        runCatching {
+                            contentResolver.openInputStream(uri)?.use { input ->
+                                // GAMA backups are tiny. Bound import size so a renamed
+                                // giant JSON file cannot consume the UI process's memory.
+                                val output = java.io.ByteArrayOutputStream()
+                                val buffer = ByteArray(16 * 1024)
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    require(output.size() + read <= 1_000_000) { "Backup is too large" }
+                                    output.write(buffer, 0, read)
+                                }
+                                output.toString(Charsets.UTF_8.name())
+                            }
+                        }.getOrNull()
+                    }
+                    if (text != null) cb(text)
+                    else Toast.makeText(this@MainActivity, localizedString(this@MainActivity, "backup", "read_failed", "Could not read backup"), Toast.LENGTH_SHORT).show()
+                }
             }
 
             // ── Crash log export: SAF file create (plain text) ────────────────
@@ -210,14 +193,26 @@ class MainActivity : ComponentActivity() {
                 ActivityResultContracts.CreateDocument("text/plain")
             ) { uri ->
                 val content = pendingCrashLogContent ?: return@rememberLauncherForActivityResult
-                uri?.let {
-                    try {
-                        contentResolver.openOutputStream(it)?.use { out ->
-                            out.write(content.toByteArray(Charsets.UTF_8))
-                        }
-                    } catch (_: Exception) {}
-                }
                 pendingCrashLogContent = null
+                if (uri == null) {
+                    Toast.makeText(this@MainActivity, localizedString(this@MainActivity, "backup", "export_cancelled", "Export cancelled"), Toast.LENGTH_SHORT).show()
+                    return@rememberLauncherForActivityResult
+                }
+                scope.launch {
+                    val saved = withContext(Dispatchers.IO) {
+                        runCatching {
+                            contentResolver.openOutputStream(uri)?.use { out ->
+                                out.write(content.toByteArray(Charsets.UTF_8))
+                            } ?: error("Could not open the selected file")
+                        }.isSuccess
+                    }
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (saved) localizedString(this@MainActivity, "backup", "export_saved", "Export saved")
+                        else localizedString(this@MainActivity, "backup", "export_save_failed", "Could not save export"),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
 
             Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {

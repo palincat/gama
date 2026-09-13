@@ -35,17 +35,20 @@ import moe.shizuku.server.IShizukuService;
 
 public class Shizuku {
 
-    private static IBinder binder;
-    private static IShizukuService service;
+    // Provider callbacks and activity startup can run on different threads.
+    // Publish a completed attach reliably to a sticky listener registered
+    // during startup (notably when Shevery delivers the binder on UID active).
+    private static volatile IBinder binder;
+    private static volatile IShizukuService service;
 
     private static int serverUid = -1;
     private static int serverApiVersion = -1;
     private static int serverPatchVersion = -1;
     private static String serverContext = null;
-    private static boolean permissionGranted = false;
+    private static volatile boolean permissionGranted = false;
     private static boolean shouldShowRequestPermissionRationale = false;
-    private static boolean preV11 = false;
-    private static boolean binderReady = false;
+    private static volatile boolean preV11 = false;
+    private static volatile boolean binderReady = false;
 
     private static final IShizukuApplication SHIZUKU_APPLICATION = new IShizukuApplication.Stub() {
 
@@ -271,17 +274,16 @@ public class Shizuku {
     }
 
     private static void addBinderReceivedListener(@NonNull OnBinderReceivedListener listener, boolean sticky, @Nullable Handler handler) {
-        if (sticky && binderReady) {
-            if (handler != null) {
-                handler.post(listener::onBinderReceived);
-            } else if (Looper.myLooper() == Looper.getMainLooper()) {
-                listener.onBinderReceived();
-            } else {
-                MAIN_HANDLER.post(listener::onBinderReceived);
-            }
-        }
+        final boolean callImmediately;
         synchronized (RECEIVED_LISTENERS) {
+            // This must be atomic with scheduleBinderReceivedListeners().
+            // Otherwise a binder delivered just before Activity startup can be
+            // dispatched to an empty list, then missed by this sticky listener.
+            callImmediately = sticky && binderReady;
             RECEIVED_LISTENERS.add(new ListenerHolder<>(listener, handler));
+        }
+        if (callImmediately) {
+            dispatchBinderReceivedListener(new ListenerHolder<>(listener, handler));
         }
     }
 
@@ -299,20 +301,24 @@ public class Shizuku {
     }
 
     private static void scheduleBinderReceivedListeners() {
+        final List<ListenerHolder<OnBinderReceivedListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
-            for (ListenerHolder<OnBinderReceivedListener> holder : RECEIVED_LISTENERS) {
-                if (holder.handler != null) {
-                    holder.handler.post(holder.listener::onBinderReceived);
-                } else {
-                    if (Looper.myLooper() == Looper.getMainLooper()) {
-                        holder.listener.onBinderReceived();
-                    } else {
-                        MAIN_HANDLER.post(holder.listener::onBinderReceived);
-                    }
-                }
-            }
+            binderReady = true;
+            listeners = new ArrayList<>(RECEIVED_LISTENERS);
         }
-        binderReady = true;
+        for (ListenerHolder<OnBinderReceivedListener> holder : listeners) {
+            dispatchBinderReceivedListener(holder);
+        }
+    }
+
+    private static void dispatchBinderReceivedListener(@NonNull ListenerHolder<OnBinderReceivedListener> holder) {
+        if (holder.handler != null) {
+            holder.handler.post(holder.listener::onBinderReceived);
+        } else if (Looper.myLooper() == Looper.getMainLooper()) {
+            holder.listener.onBinderReceived();
+        } else {
+            MAIN_HANDLER.post(holder.listener::onBinderReceived);
+        }
     }
 
     /**

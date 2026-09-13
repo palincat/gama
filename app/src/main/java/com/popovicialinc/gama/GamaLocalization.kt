@@ -64,16 +64,19 @@ object LocalizationManager {
     private const val TRANSLATIONS_DIR = "translations"
     private const val TAG = "GamaLocalization"
 
-    // Only cache the heavy things — parsed JSON blobs.
-    // The language list is just a directory scan; never cache it so new files
-    // added to assets always appear without a reinstall or cache flush.
+    // Assets are immutable for the lifetime of an installed APK, so cache the
+    // metadata as well as parsed strings. This avoids reparsing every language
+    // file whenever a non-English language is selected.
     private var cachedEnglish: JSONObject? = null
     private var cachedStrings: GamaStrings? = null
     private var cachedCode: String? = null
+    private var cachedLanguages: List<LanguageEntry>? = null
+    private val cacheLock = Any()
 
-    /** Scan assets/translations/ and return every valid LanguageEntry. Never cached. */
+    /** Scan assets/translations/ and return every valid LanguageEntry. */
     suspend fun loadAvailableLanguages(context: Context): List<LanguageEntry> =
         withContext(Dispatchers.IO) {
+            cachedLanguages?.let { return@withContext it }
             val assets = context.assets
             val files = try {
                 assets.list(TRANSLATIONS_DIR) ?: emptyArray()
@@ -111,6 +114,7 @@ object LocalizationManager {
 
             // English always first, rest alphabetical by native name
             entries.sortedWith(compareBy { if (it.code == DEFAULT_CODE) "" else it.nativeName })
+                .also { cachedLanguages = it }
         }
 
     /** Load and return [GamaStrings] for the given language [code]. */
@@ -155,6 +159,40 @@ object LocalizationManager {
             strings
         }
 
+    /**
+     * Synchronous lookup for framework callbacks that cannot be suspend
+     * functions (notifications and QS tile updates). It shares the same parsed
+     * cache and only performs asset I/O on a cache miss, avoiding repeated JSON
+     * parsing across non-Compose surfaces.
+     */
+    fun getStringBlocking(
+        context: Context,
+        code: String,
+        section: String,
+        key: String,
+        fallback: String
+    ): String = synchronized(cacheLock) {
+        val strings = if (code == cachedCode && cachedStrings != null) {
+            cachedStrings!!
+        } else {
+            val english = cachedEnglish ?: readJson(context, DEFAULT_CODE).also { cachedEnglish = it }
+            val target = if (code == DEFAULT_CODE) english else readJson(context, code)
+            GamaStrings(target, if (code == DEFAULT_CODE) null else english).also {
+                cachedStrings = it
+                cachedCode = code
+            }
+        }
+        strings.get(section, key).ifEmpty { fallback }
+    }
+
+    private fun readJson(context: Context, code: String): JSONObject {
+        return try {
+            context.assets.open("$TRANSLATIONS_DIR/$code.json").bufferedReader().use { JSONObject(it.readText()) }
+        } catch (_: Exception) {
+            JSONObject()
+        }
+    }
+
     fun getSavedCode(prefs: SharedPreferences): String =
         prefs.getString(PREF_KEY, DEFAULT_CODE) ?: DEFAULT_CODE
 
@@ -163,8 +201,11 @@ object LocalizationManager {
 
     /** Force-evict string caches so the next loadStrings call re-reads from disk. */
     fun invalidateCache() {
-        cachedStrings = null
-        cachedCode = null
+        synchronized(cacheLock) {
+            cachedStrings = null
+            cachedCode = null
+            cachedLanguages = null
+        }
     }
 }
 
@@ -182,6 +223,16 @@ val LocalLanguageCode = compositionLocalOf { mutableStateOf("en") }
 // ─────────────────────────────────────────────────────────────────────────────
 // Provider composable — wrap GamaUI with this in MainActivity
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Synchronous lookup for non-Compose surfaces (toasts, notifications, tiles,
+ * workers) that need the user's selected language without a composition.
+ */
+fun localizedString(context: Context, section: String, key: String, fallback: String): String {
+    val code = context.getSharedPreferences("gama_prefs", Context.MODE_PRIVATE)
+        .getString("selected_language", "en") ?: "en"
+    return LocalizationManager.getStringBlocking(context, code, section, key, fallback)
+}
 
 @Composable
 fun GamaLocalizationProvider(
@@ -203,8 +254,10 @@ fun GamaLocalizationProvider(
         strings = LocalizationManager.loadStrings(context, selectedCode)
     }
 
-    val emptyStrings = remember { GamaStrings(JSONObject(), null) }
-    val resolved = strings ?: emptyStrings
+    // Do not compose the app with an empty dictionary: every call site would
+    // briefly render hard-coded English before the selected language arrived.
+    // Keep the activity on its themed background until the first load completes.
+    val resolved = strings ?: return@GamaLocalizationProvider
 
     CompositionLocalProvider(
         LocalStrings      provides resolved,

@@ -33,10 +33,10 @@ object BackupHelper {
 
     // ── All keys that are backed up ───────────────────────────────────────────
     private val INT_KEYS = listOf(
-        "animation_level", "particle_speed", "particle_parallax_sensitivity",
+        "animation_level", "animation_speed", "particle_speed", "particle_parallax_sensitivity",
         "particle_count", "particle_count_custom", "theme_preference",
         "custom_accent", "custom_gradient_start", "custom_gradient_end",
-        "ui_scale", "oled_accent_color", "notif_interval_idx",
+        "ui_scale", "notif_interval_idx",
         // Haptics strengths
         GamaHaptics.PREF_REGULAR_STRENGTH,
         GamaHaptics.PREF_HOLD_STRENGTH,
@@ -54,7 +54,7 @@ object BackupHelper {
         "kill_launcher", "kill_keyboard", "show_gpuwatch_button",
         "stagger_enabled", "back_button_avoidance_enabled", "back_button_inversed",
         "shadows_enabled", "advanced_color_picker", "dismiss_on_click_outside",
-        "notif_enabled", "oled_mode", "use_dynamic_color_oled",
+        "notif_enabled",
         // Particle refresh-rate switches
         "particle_native_refresh_rate", "particle_quarter_refresh_rate",
         // Matrix toggles (matrix_mode is a Boolean pref despite its name — see GamaUI)
@@ -68,10 +68,19 @@ object BackupHelper {
         GamaHaptics.PREF_BOUNCE_ENABLED,
         GamaHaptics.PREF_BOUNCE_RETURN_ENABLED
     )
-    private val FLOAT_KEYS = listOf("time_offset_hours", "matrix_bg_alpha")
-    private val LONG_KEYS = listOf("notif_last_sent")
+    private val FLOAT_KEYS = listOf(
+        "time_offset_hours", "matrix_bg_alpha",
+        "floating_left_x", "floating_left_y", "floating_right_x", "floating_right_y",
+        "landscape_floating_left_x", "landscape_floating_left_y",
+        "landscape_floating_right_x", "landscape_floating_right_y",
+        "settings_button_x", "settings_button_y",
+        "landscape_settings_button_x", "landscape_settings_button_y"
+    )
+    // Runtime notification bookkeeping must not travel between devices.
+    private val LONG_KEYS = emptyList<String>()
     private val STRING_KEYS = listOf(
-        "user_name", RendererState.PREF_LAST_RENDERER, "selected_language"
+        "user_name", RendererState.PREF_LAST_RENDERER,
+        RendererState.PREF_DESIRED_RENDERER, "selected_language"
     )
     private val STRING_SET_KEYS = listOf("excluded_apps")
 
@@ -100,7 +109,7 @@ object BackupHelper {
         val root = JSONObject()
 
         // Version stamp — lets future GAMA versions handle schema migrations
-        root.put("gama_backup_version", 2)
+        root.put("gama_backup_version", CURRENT_VERSION)
         root.put("exported_at", System.currentTimeMillis())
 
         INT_KEYS.forEach { key -> if (prefs.contains(key)) root.put(key, prefs.getInt(key, 0)) }
@@ -123,10 +132,9 @@ object BackupHelper {
     /**
      * Import — parse [json] and write every recognised key back into [prefs].
      *
-     * Accepts backups from v1 (older installs; they simply carry fewer keys).
-     * Unknown keys are ignored so forward-compatible backups work. Each key is
-     * restored independently: one corrupt value skips that key instead of
-     * aborting the whole restore.
+     * Accepts older supported backups from v1. Backups from a newer schema are
+     * rejected rather than silently partially restored. Unknown fields in a
+     * supported version are ignored; one invalid value never aborts the rest.
      *
      * Runs on [Dispatchers.IO] so JSON parsing and SharedPreferences writes
      * never block the main thread.
@@ -137,8 +145,12 @@ object BackupHelper {
         val root = JSONObject(json)
 
         // Reject completely foreign files
-        if (!root.has("gama_backup_version") || root.optInt("gama_backup_version", 0) < 1) {
+        val version = root.optInt("gama_backup_version", 0)
+        if (!root.has("gama_backup_version") || version < 1) {
             throw IllegalArgumentException("This doesn't look like a GAMA backup file.")
+        }
+        if (version > CURRENT_VERSION) {
+            throw IllegalArgumentException("This backup was created by a newer version of GAMA.")
         }
 
         var count = 0
@@ -148,7 +160,7 @@ object BackupHelper {
         INT_KEYS.forEach { key ->
             if (root.has(key)) {
                 val value = root.optInt(key, Int.MIN_VALUE)
-                if (value != Int.MIN_VALUE) { editor.putInt(key, value); count++ } else skipped++
+                if (value != Int.MIN_VALUE && isValidInt(key, value)) { editor.putInt(key, value); count++ } else skipped++
             }
         }
         BOOLEAN_KEYS.forEach { key ->
@@ -168,7 +180,7 @@ object BackupHelper {
         FLOAT_KEYS.forEach { key ->
             if (root.has(key)) {
                 val value = root.optDouble(key, Double.NaN)
-                if (!value.isNaN()) { editor.putFloat(key, value.toFloat()); count++ } else skipped++
+                if (value.isFinite() && isValidFloat(key, value.toFloat())) { editor.putFloat(key, value.toFloat()); count++ } else skipped++
             }
         }
         LONG_KEYS.forEach { key ->
@@ -180,7 +192,7 @@ object BackupHelper {
         STRING_KEYS.forEach { key ->
             if (root.has(key)) {
                 val value = root.optString(key, "\u0000")
-                if (value != "\u0000") { editor.putString(key, value); count++ } else skipped++
+                if (value != "\u0000" && isValidString(key, value)) { editor.putString(key, value); count++ } else skipped++
             }
         }
         STRING_SET_KEYS.forEach { key ->
@@ -188,12 +200,17 @@ object BackupHelper {
                 val arrOpt = root.optJSONArray(key)
                 if (arrOpt != null) {
                     val set = mutableSetOf<String>()
+                    var valid = arrOpt.length() <= MAX_STRING_SET_ITEMS
                     for (i in 0 until arrOpt.length()) {
                         val item = arrOpt.optString(i, null as String?) ?: continue
-                        set.add(item)
+                        if (item.length > MAX_STRING_SET_ITEM_LENGTH) valid = false else set.add(item)
                     }
-                    editor.putStringSet(key, set)
-                    count++
+                    if (valid) {
+                        editor.putStringSet(key, set)
+                        count++
+                    } else {
+                        skipped++
+                    }
                 } else skipped++
             }
         }
@@ -201,5 +218,31 @@ object BackupHelper {
         editor.apply()
         if (skipped > 0) "Restored $count settings ($skipped invalid entries skipped)."
         else "Restored $count settings successfully."
+    }
+
+    private const val CURRENT_VERSION = 2
+    private const val MAX_STRING_SET_ITEMS = 512
+    private const val MAX_STRING_SET_ITEM_LENGTH = 256
+
+    private fun isValidInt(key: String, value: Int): Boolean = when (key) {
+        "theme_preference", "ui_scale", "animation_level" -> value in 0..2
+        "particle_count" -> value in 0..2_000
+        "particle_count_custom" -> value in 1..10_000
+        "matrix_speed", "matrix_density", "matrix_font_size", "matrix_fade_length" -> value in 0..1_000
+        "notif_interval_idx" -> value in 0..10
+        else -> true
+    }
+
+    private fun isValidFloat(key: String, value: Float): Boolean = when (key) {
+        "time_offset_hours" -> value in -24f..24f
+        "matrix_bg_alpha" -> value in 0f..1f
+        else -> value in -100_000f..100_000f
+    }
+
+    private fun isValidString(key: String, value: String): Boolean = when (key) {
+        RendererState.PREF_LAST_RENDERER, RendererState.PREF_DESIRED_RENDERER ->
+            value == RendererState.RENDERER_OPENGL || value == RendererState.RENDERER_VULKAN
+        "selected_language" -> value.matches(Regex("[a-z]{2,3}(_[A-Z]{2})?"))
+        else -> value.length <= 4_096
     }
 }

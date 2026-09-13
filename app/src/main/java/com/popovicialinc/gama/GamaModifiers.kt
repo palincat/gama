@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.composed
@@ -135,26 +136,28 @@ fun Modifier.pressedAccentOutlineGlow(
     strokeWidth: Dp = 2.dp,
     glowRadius: Dp = 9.dp,
     maxAlpha: Float = 0.70f
-): Modifier = this.drawWithContent {
-    drawContent()
-
-    val alpha = (pressProgress * maxAlpha).coerceIn(0f, maxAlpha)
-    if (alpha <= 0.01f || size.width <= 0f || size.height <= 0f) return@drawWithContent
-
+): Modifier = this.drawWithCache {
     val strokePx = strokeWidth.toPx().coerceAtLeast(1f)
     val blurPx = glowRadius.toPx().coerceAtLeast(0f)
+    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        this.strokeWidth = strokePx
+        maskFilter = if (blurPx > 0f) BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL) else null
+    }
+
+    onDrawWithContent {
+        drawContent()
+
+        val alpha = (pressProgress * maxAlpha).coerceIn(0f, maxAlpha)
+        if (alpha <= 0.01f || size.width <= 0f || size.height <= 0f) return@onDrawWithContent
+
     // Keep the glow centered on the same path as the solid outline.
     // The previous extra inset pushed the bloom inward and left a tiny dead gap.
     val inset = (strokePx / 2f).coerceAtMost(minOf(size.width, size.height) / 3f)
     val radiusPx = (cornerRadius.toPx() - strokePx / 2f).coerceAtLeast(0f)
         .coerceAtMost(minOf(size.width, size.height) / 2f)
 
-    val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        style = android.graphics.Paint.Style.STROKE
-        this.strokeWidth = strokePx
-        this.color = color.copy(alpha = alpha).toArgb()
-        maskFilter = if (blurPx > 0f) BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL) else null
-    }
+    glowPaint.color = color.copy(alpha = alpha).toArgb()
 
     drawIntoCanvas { canvas ->
         canvas.nativeCanvas.drawRoundRect(
@@ -172,7 +175,7 @@ fun Modifier.pressedAccentOutlineGlow(
 
     // Subtle interior spill that starts right at the outline, with no visual gap.
     val innerAlpha = (pressProgress * 0.060f).coerceIn(0f, 0.060f)
-    if (innerAlpha <= 0.002f) return@drawWithContent
+    if (innerAlpha <= 0.002f) return@onDrawWithContent
 
     val left = inset
     val top = inset
@@ -180,7 +183,7 @@ fun Modifier.pressedAccentOutlineGlow(
     val bottom = size.height - inset
     val innerWidth = (right - left).coerceAtLeast(0f)
     val innerHeight = (bottom - top).coerceAtLeast(0f)
-    if (innerWidth <= 0f || innerHeight <= 0f) return@drawWithContent
+    if (innerWidth <= 0f || innerHeight <= 0f) return@onDrawWithContent
 
     val edgeHeight = minOf(innerHeight * 0.16f, 14.dp.toPx())
     val edgeWidth = minOf(innerWidth * 0.12f, 12.dp.toPx())
@@ -255,6 +258,7 @@ fun Modifier.pressedAccentOutlineGlow(
                 size = Size(edgeWidth, innerHeight)
             )
         }
+    }
     }
 }
 

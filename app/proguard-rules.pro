@@ -1,5 +1,3 @@
--dontobfuscate
-
 # Maximum optimization
 -optimizationpasses 5
 -allowaccessmodification
@@ -10,9 +8,11 @@
 -keep interface rikka.shizuku.** { *; }
 -keepclassmembers class rikka.shizuku.** { *; }
 -keepnames class rikka.shizuku.ShizukuProvider
-
-# ── GAMA ─────────────────────────────────────────────────────
--keep class com.popovicialinc.gama.** { *; }
+# The Shizuku manager delivers this Parcelable across a process boundary. Its
+# fully qualified name is written into the Bundle, so obfuscating it makes the
+# client fail to deserialize the binder and incorrectly report Shizuku offline.
+-keep class moe.shizuku.api.BinderContainer { *; }
+-keep class moe.shizuku.api.BinderContainer$* { *; }
 
 # ── WorkManager (reflection-based instantiation) ─────────────
 -keep class * extends androidx.work.Worker
@@ -60,5 +60,3 @@
 
 -keepattributes *Annotation*
 -keepattributes Signature
--dontwarn **
--ignorewarnings

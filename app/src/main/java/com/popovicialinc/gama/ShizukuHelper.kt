@@ -10,12 +10,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.service.quicksettings.TileService
 import android.widget.Toast
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
@@ -45,6 +45,7 @@ object ShizukuHelper {
     @Volatile
     private var rootAvailabilityCheckedAtMs: Long = 0L
     private const val ROOT_CACHE_TTL_MS = 30_000L
+    private const val SYSTEM_UI_RESTART_COOLDOWN_MS = 15_000L
 
     /**
      * Requests and verifies root through `su`. This must be called only after
@@ -82,15 +83,6 @@ object ShizukuHelper {
                 )
             } catch (_: Exception) {}
         }
-        // Renderer changes can originate from the main screen, Tasker, boot
-        // restore, or the QS tile. Refresh every installed Glance instance so
-        // its displayed renderer never remains stale after an external switch.
-        try {
-            val manager = GlanceAppWidgetManager(context)
-            manager.getGlanceIds(GamaWidget::class.java).forEach { glanceId ->
-                GamaWidget().update(context, glanceId)
-            }
-        } catch (_: Exception) {}
     }
 
     /**
@@ -105,7 +97,7 @@ object ShizukuHelper {
         return result == "Success"
     }
 
-    private suspend fun runRootCommand(cmd: String): String = withContext(Dispatchers.IO) {
+    private suspend fun runRootCommand(cmd: String, timeoutSeconds: Long = 3): String = withContext(Dispatchers.IO) {
         try {
             val process = ProcessBuilder("su", "-c", cmd).start()
             try {
@@ -117,7 +109,7 @@ object ShizukuHelper {
                         process.errorStream.bufferedReader().readText()
                     }
 
-                    val didFinish = process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+                    val didFinish = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
                     if (!didFinish) {
                         outputDeferred.cancel()
                         errorDeferred.cancel()
@@ -194,7 +186,6 @@ object ShizukuHelper {
             return@withContext runRootCommand(cmd)
         }
         if (!checkBinder() || !checkPermission()) {
-            if (refreshRootAvailability()) return@withContext runRootCommand(cmd)
             return@withContext "Error: Shizuku not available and no root access"
         }
         try {
@@ -248,12 +239,14 @@ object ShizukuHelper {
     }
 
     private fun requestPermissionFallback(context: Context) {
+        val backendName = ShizukuBackend.installed(context)?.displayName ?: "Shizuku"
         try {
             Shizuku.requestPermission(0)
         } catch (_: Exception) {
             Toast.makeText(
                 context,
-                "Open the Shizuku app and tap 'Use Shizuku' to grant permission",
+                localizedString(context, "dialogs", "backend_grant_permission", "Open the %s app and grant GAMA permission")
+                    .replace("%s", backendName),
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -268,7 +261,7 @@ object ShizukuHelper {
     //  4. Only return "Unknown" on a genuine I/O / permission error
 
     suspend fun getCurrentRenderer(): String = withContext(Dispatchers.IO) {
-        if (!isBackendReady() && !refreshRootAvailability()) return@withContext "Unknown"
+        if (!isBackendReady()) return@withContext "Unknown"
 
         // ── Source 1: the prop GAMA directly sets ─────────────────────────────
         val primary = runCommand("getprop debug.hwui.renderer").trim()
@@ -373,19 +366,28 @@ object ShizukuHelper {
     // after the switch (or already held it). Callers that persist switch state
     // (tile, Tasker) should only record the new renderer when this returns true,
     // so a failed switch never poisons boot-restore.
-    private suspend fun switchRendererSuspend(
-        propValue: String,
-        label: String,
+    internal suspend fun applyRenderer(
+        target: String,
         context: Context,
         aggressiveMode: Boolean,
         killLauncher: Boolean,
         killKeyboard: Boolean,
         excludedApps: Set<String>,
-        targetedApps: Set<String>,
         onStatusUpdate: (String) -> Unit,
-        onVerboseOutput: ((String) -> Unit)? = null
+        onVerboseOutput: ((String) -> Unit)? = null,
+        onVerified: (() -> Unit)? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        withContext(Dispatchers.Main) { onStatusUpdate("Running $label commands...") }
+        val (propValue, label) = when (target) {
+            RendererState.RENDERER_VULKAN -> "skiavk" to RendererState.RENDERER_VULKAN
+            RendererState.RENDERER_OPENGL -> "opengl" to RendererState.RENDERER_OPENGL
+            else -> return@withContext false
+        }
+        withContext(Dispatchers.Main) {
+            onStatusUpdate(
+                localizedString(context, "renderer", "status_running_commands", "Running %s commands…")
+                    .replace("%s", label)
+            )
+        }
 
         val originalIme = runCommand("settings get secure default_input_method")
             .lineSequence()
@@ -461,10 +463,14 @@ object ShizukuHelper {
                 )
             } else {
                 withContext(Dispatchers.Main) {
-                    onStatusUpdate("$label setprop FAILED: $setpropResult")
+                    onStatusUpdate(
+                        localizedString(context, "renderer", "status_setprop_failed", "%s setprop FAILED: %s")
+                            .replace("%s", label).replace("%s", setpropResult)
+                    )
                     Toast.makeText(
                         context,
-                        "Could not set renderer — $setpropResult",
+                        localizedString(context, "renderer", "toast_setprop_failed", "Could not set renderer — %s")
+                            .replace("%s", setpropResult),
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -472,27 +478,36 @@ object ShizukuHelper {
             }
         }
 
+        // Verify before restarting anything. The durable state is committed by
+        // RendererController through onVerified immediately below, before a
+        // launcher/SystemUI restart can terminate this process.
+        val verifyDetail = runCommand("getprop debug.hwui.renderer").trim()
+        val verified = verifyDetail.equals(propValue, ignoreCase = true) ||
+            (verifyDetail == "Success" && propValue == "opengl")
+        if (!verified) {
+            withContext(Dispatchers.Main) {
+                val readBack = verifyDetail.takeUnless { it.startsWith("Error", ignoreCase = true) } ?: "unreadable"
+                onStatusUpdate(
+                    localizedString(
+                        context, "renderer", "status_applied_unreadable",
+                        "%s applied, but the renderer prop reads back as '%s'"
+                    ).replace("%s", label).replace("%s", readBack)
+                )
+            }
+            return@withContext false
+        }
+        onVerified?.invoke()
+
         if (aggressiveMode) {
-            val packages = getAllPackageNames()
+            // Never mass-stop OEM/system packages. This mode deliberately
+            // restarts third-party apps only; protected packages still cover
+            // GAMA, Shizuku, IME and the active launcher.
+            val packages = getThirdPartyPackageNames()
                 .filter { pkg -> canForceStopPackage(pkg) }
 
             packages.forEach { pkg ->
                 onVerboseOutput?.invoke("Stopping: $pkg\n")
                 runCommand("am force-stop ${shellQuote(pkg)}").also { onVerboseOutput?.invoke("Output: $it\n") }
-            }
-        } else if (targetedApps.isNotEmpty()) {
-            targetedApps
-                .filter { pkg -> canForceStopPackage(pkg) }
-                .forEach { pkg ->
-                    onVerboseOutput?.invoke("Stopping: $pkg\n")
-                    runCommand("am force-stop ${shellQuote(pkg)}").also { onVerboseOutput?.invoke("Output: $it\n") }
-                }
-        } else {
-            // Restart Settings so it picks up the new renderer prop. This is safe and
-            // does not touch launcher / keyboard packages.
-            runCommand("am force-stop com.android.settings").also {
-                onVerboseOutput?.invoke("Running: am force-stop com.android.settings\n")
-                onVerboseOutput?.invoke("Output: $it\n\n")
             }
         }
 
@@ -539,31 +554,55 @@ object ShizukuHelper {
             } else {
                 onVerboseOutput?.invoke("Launcher restart skipped: could not resolve the active HOME app.\n\n")
             }
-            val systemUiCommand = "am force-stop com.android.systemui"
-            val systemUiOutput = runCommand(systemUiCommand)
-            onVerboseOutput?.invoke("Running: $systemUiCommand\nOutput: $systemUiOutput\n\n")
-            if (systemUiOutput.startsWith("Error", ignoreCase = true)) {
-                onVerboseOutput?.invoke("System UI restart failed: $systemUiOutput\n")
+            val restartPrefs = context.getSharedPreferences("gama_prefs", Context.MODE_PRIVATE)
+            val now = android.os.SystemClock.elapsedRealtime()
+            val lastRestart = restartPrefs.getLong("last_systemui_restart_uptime", 0L)
+            if (lastRestart == 0L || now - lastRestart >= SYSTEM_UI_RESTART_COOLDOWN_MS) {
+                val systemUiCommand = "am force-stop com.android.systemui"
+                val systemUiOutput = runCommand(systemUiCommand)
+                restartPrefs.edit().putLong("last_systemui_restart_uptime", now).apply()
+                onVerboseOutput?.invoke("Running: $systemUiCommand\nOutput: $systemUiOutput\n\n")
+                if (systemUiOutput.startsWith("Error", ignoreCase = true)) {
+                    onVerboseOutput?.invoke("System UI restart failed: $systemUiOutput\n")
+                }
+            } else {
+                onVerboseOutput?.invoke("System UI restart skipped: 15-second cooldown is active.\n\n")
             }
         }
 
-        // ── Read-back verification ────────────────────────────────────────────
-        // The old code reported success unconditionally even when setprop silently
-        // failed (e.g. SELinux denial), which made the switch feel "too fast" —
-        // nothing had actually changed. Read the prop back and report honestly.
-        val verifyDetail = runCommand("getprop debug.hwui.renderer").trim()
-        val verified = verifyDetail.equals(propValue, ignoreCase = true) ||
-            (verifyDetail == "Success" && propValue == "opengl") // unset prop = OpenGL default
-
         withContext(Dispatchers.Main) {
-            onStatusUpdate(
-                if (verified) "$label commands executed!"
-                else "$label applied, but the renderer prop reads back as '${verifyDetail.takeUnless { it.startsWith("Error", ignoreCase = true) } ?: "unreadable"}'"
-            )
-            Toast.makeText(context, "Switched to $label", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                localizedString(context, "renderer", "toast_switched", "Switched to %s").replace("%s", label),
+                Toast.LENGTH_SHORT
+            ).show()
         }
-        verified
+        true
     }
+
+    /**
+     * Wait for either the official Shizuku service or a compatible manager such
+     * as Shevery to finish delivering and attaching its binder. Both managers
+     * implement the same client protocol; the only meaningful distinction here
+     * is whether the binder and GAMA's authorization are ready.
+     */
+    suspend fun awaitShizuku(timeoutMs: Long = 10_000L): Pair<Boolean, Boolean> {
+        val deadline = android.os.SystemClock.elapsedRealtime() + timeoutMs
+        var running = false
+        var permission = false
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            running = checkBinder()
+            permission = running && checkPermission()
+            if (permission || running) return running to permission
+            delay(250L)
+        }
+        running = checkBinder()
+        permission = running && checkPermission()
+        return running to permission
+    }
+
+    private suspend fun getThirdPartyPackageNames(): List<String> =
+        getPackageNames("pm list packages -3")
 
     suspend fun runVulkanSuspend(
         context: Context,
@@ -571,10 +610,14 @@ object ShizukuHelper {
         killLauncher: Boolean = false,
         killKeyboard: Boolean = false,
         excludedApps: Set<String>,
-        targetedApps: Set<String>,
         onStatusUpdate: (String) -> Unit,
         onVerboseOutput: ((String) -> Unit)? = null
-    ) = switchRendererSuspend("skiavk", "Vulkan", context, aggressiveMode, killLauncher, killKeyboard, excludedApps, targetedApps, onStatusUpdate, onVerboseOutput)
+    ) = RendererController.switch(
+        context,
+        RendererController.Request(RendererState.RENDERER_VULKAN, "GAMA", aggressiveMode, killLauncher, killKeyboard, excludedApps),
+        onStatusUpdate,
+        onVerboseOutput
+    ).verified
 
     suspend fun runOpenGLSuspend(
         context: Context,
@@ -582,48 +625,14 @@ object ShizukuHelper {
         killLauncher: Boolean = false,
         killKeyboard: Boolean = false,
         excludedApps: Set<String>,
-        targetedApps: Set<String>,
         onStatusUpdate: (String) -> Unit,
         onVerboseOutput: ((String) -> Unit)? = null
-    ) = switchRendererSuspend("opengl", "OpenGL", context, aggressiveMode, killLauncher, killKeyboard, excludedApps, targetedApps, onStatusUpdate, onVerboseOutput)
-
-    // ── Per-app custom renderers ──────────────────────────────────────────────
-
-    suspend fun applyCustomRenderersSuspend(
-        context: Context,
-        customRendererApps: Map<String, String>,
-        onStatusUpdate: (String) -> Unit,
-        onVerboseOutput: ((String) -> Unit)? = null
-    ) = withContext(Dispatchers.IO) {
-        withContext(Dispatchers.Main) { onStatusUpdate("Applying custom renderer settings...") }
-        var appliedCount = 0
-        customRendererApps.forEach { (pkg, renderer) ->
-            if (!isSafePackageName(pkg)) {
-                onVerboseOutput?.invoke("Skipping invalid package name: $pkg\n")
-                return@forEach
-            }
-
-            val value = when (renderer.lowercase()) {
-                "vulkan" -> "skiavk"
-                "opengl" -> "opengl"
-                else     -> return@forEach
-            }
-
-            val quotedPkg = shellQuote(pkg)
-            val setResult = runCommand("setprop debug.hwui.renderer.$pkg $value")
-            onVerboseOutput?.invoke("Output: $setResult\n")
-            val stopResult = runCommand("am force-stop $quotedPkg")
-            onVerboseOutput?.invoke("Force-stop output: $stopResult\n")
-            if (!setResult.startsWith("Error", ignoreCase = true) &&
-                !stopResult.startsWith("Error", ignoreCase = true)) {
-                appliedCount++
-            }
-        }
-        withContext(Dispatchers.Main) {
-            onStatusUpdate("Custom renderers applied!")
-            Toast.makeText(context, "Applied $appliedCount custom renderers", Toast.LENGTH_SHORT).show()
-        }
-    }
+    ) = RendererController.switch(
+        context,
+        RendererController.Request(RendererState.RENDERER_OPENGL, "GAMA", aggressiveMode, killLauncher, killKeyboard, excludedApps),
+        onStatusUpdate,
+        onVerboseOutput
+    ).verified
 
     // ── Public fun wrappers ───────────────────────────────────────────────────
 
@@ -640,7 +649,12 @@ object ShizukuHelper {
             return
         }
         if (!checkBinder()) {
-            Toast.makeText(context, "Shizuku not running!", Toast.LENGTH_SHORT).show()
+            val backendName = ShizukuBackend.installed(context)?.displayName ?: "Shizuku"
+            Toast.makeText(
+                context,
+                localizedString(context, "common", "backend_not_running_toast", "%s not running!").replace("%s", backendName),
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
         if (!checkPermission()) {
@@ -654,28 +668,20 @@ object ShizukuHelper {
         context: Context, scope: CoroutineScope, aggressiveMode: Boolean,
         killLauncher: Boolean = false,
         killKeyboard: Boolean = false,
-        excludedApps: Set<String>, targetedApps: Set<String>,
+        excludedApps: Set<String>,
         onStatusUpdate: (String) -> Unit, onVerboseOutput: ((String) -> Unit)? = null
     ) = guardedLaunch(context, scope) {
-        runVulkanSuspend(context, aggressiveMode, killLauncher, killKeyboard, excludedApps, targetedApps, onStatusUpdate, onVerboseOutput)
+        runVulkanSuspend(context, aggressiveMode, killLauncher, killKeyboard, excludedApps, onStatusUpdate, onVerboseOutput)
     }
 
     fun runOpenGL(
         context: Context, scope: CoroutineScope, aggressiveMode: Boolean,
         killLauncher: Boolean = false,
         killKeyboard: Boolean = false,
-        excludedApps: Set<String>, targetedApps: Set<String>,
+        excludedApps: Set<String>,
         onStatusUpdate: (String) -> Unit, onVerboseOutput: ((String) -> Unit)? = null
     ) = guardedLaunch(context, scope) {
-        runOpenGLSuspend(context, aggressiveMode, killLauncher, killKeyboard, excludedApps, targetedApps, onStatusUpdate, onVerboseOutput)
-    }
-
-    fun applyCustomRenderers(
-        context: Context, scope: CoroutineScope,
-        customRendererApps: Map<String, String>,
-        onStatusUpdate: (String) -> Unit, onVerboseOutput: ((String) -> Unit)? = null
-    ) = guardedLaunch(context, scope) {
-        applyCustomRenderersSuspend(context, customRendererApps, onStatusUpdate, onVerboseOutput)
+        runOpenGLSuspend(context, aggressiveMode, killLauncher, killKeyboard, excludedApps, onStatusUpdate, onVerboseOutput)
     }
 
     /**
@@ -692,13 +698,17 @@ object ShizukuHelper {
      * while the process runs.  Process can never block on a full buffer, so it
      * always exits cleanly within the timeout.
      */
-    suspend fun getAllPackageNames(): List<String> = withContext(Dispatchers.IO) {
+    suspend fun getAllPackageNames(): List<String> = getPackageNames("pm list packages -a")
+
+    private suspend fun getPackageNames(command: String): List<String> = withContext(Dispatchers.IO) {
         val shizukuReady = checkBinder() && checkPermission()
-        if (!shizukuReady && !isRootAvailable() && !refreshRootAvailability()) return@withContext emptyList()
+        // Package enumeration is never allowed to trigger a background root
+        // prompt. Root must already have been explicitly approved in this process.
+        if (!shizukuReady && !isRootAvailable()) return@withContext emptyList()
         if (!shizukuReady) {
             // Root path: same concurrent-reader pattern, just spawned via su.
             return@withContext try {
-                val process = ProcessBuilder("su", "-c", "pm list packages -a").start()
+                val process = ProcessBuilder("su", "-c", command).start()
                 try {
                     val (outputText, _) = coroutineScope {
                         val outputDeferred = async(Dispatchers.IO) {
@@ -739,7 +749,7 @@ object ShizukuHelper {
             )
             method.isAccessible = true
             val remoteProcess = method.invoke(
-                null, arrayOf("sh", "-c", "pm list packages -a"), null, null
+                null, arrayOf("sh", "-c", command), null, null
             )
             val process = remoteProcess as? Process ?: return@withContext emptyList()
 
@@ -792,6 +802,10 @@ object ShizukuHelper {
     // a classic deadlock.  Draining stdout in a concurrent coroutine prevents this.
 
     suspend fun fetchCrashLogs(): List<CrashEntry> = withContext(Dispatchers.IO) {
+        if (isRootAvailable()) {
+            val raw = runRootCommand("dumpsys dropbox --print", timeoutSeconds = 30)
+            return@withContext if (raw.isBlank() || raw.startsWith("Error:")) emptyList() else parseCrashLogs(raw)
+        }
         if (!checkBinder() || !checkPermission()) return@withContext emptyList()
 
         try {
@@ -896,8 +910,13 @@ object ShizukuHelper {
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                "gama_test", "GAMA Test Notifications", NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "Test notifications from GAMA"; enableVibration(true); enableLights(true) }
+                "gama_test",
+                localizedString(context, "notification", "channel_test_name", "GAMA Test Notifications"),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = localizedString(context, "notification", "channel_test_desc", "Test notifications from GAMA")
+                enableVibration(true); enableLights(true)
+            }
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .createNotificationChannel(channel)
         }
@@ -916,8 +935,16 @@ object ShizukuHelper {
                     .setSmallIcon(R.drawable.ic_notification)
                     .setColor(0xFF5A63A8.toInt())
                     .setColorized(false)
-                    .setContentTitle(if (userName.isNotEmpty()) "Hey $userName! 👋" else "Test Notification")
-                    .setContentText(if (userName.isNotEmpty()) "Your notification system is working perfectly!" else "Notifications are working correctly!")
+                    .setContentTitle(
+                        if (userName.isNotEmpty())
+                            localizedString(context, "notification", "test_title_named", "Hey %s! 👋").replace("%s", userName)
+                        else localizedString(context, "notification", "test_title_unnamed", "Test Notification")
+                    )
+                    .setContentText(
+                        if (userName.isNotEmpty())
+                            localizedString(context, "notification", "test_body_named", "Your notification system is working perfectly!")
+                        else localizedString(context, "notification", "test_body_unnamed", "Notifications are working correctly!")
+                    )
                     .setPriority(Notification.PRIORITY_DEFAULT)
                     .setAutoCancel(true)
                     .setVibrate(longArrayOf(0, 250, 250, 250))
