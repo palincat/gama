@@ -208,137 +208,6 @@ fun ShizukuHelpDialog(
             )
 
             if (helpType == "not_running") {
-                // ── Primary action: download (missing) or open (installed) ──
-                if (BuildConfig.CAN_INSTALL_SHIZUKU && !shizukuInstalled) {
-                    val scope = rememberCoroutineScope()
-                    var installPhase by remember { mutableStateOf(0) } // 0 idle · 1 consent · 2 downloading · 3 installing · 4 installed · -1 failed
-                    var installProgress by remember { mutableStateOf(0f) }
-                    var installError by remember { mutableStateOf("") }
-
-                    // First tap asks for explicit consent: the APK comes straight
-                    // from GitHub and installs outside F-Droid's review. Required by
-                    // F-Droid's inclusion policy (opt-in, clearly explained).
-                    val consentText = LocalStrings.current["dialogs.shizuku_download_consent"]
-                        .ifEmpty { "This downloads the Shizuku APK from GitHub and installs it directly, bypassing F-Droid's checks. Continue?" }
-
-                    val installLabel = when {
-                        installPhase == 1 -> LocalStrings.current["dialogs.shizuku_downloading"]
-                            .ifEmpty { "Downloading Shizuku… %s%" }
-                            .replace("%s", ((installProgress * 100).toInt()).toString())
-                        installPhase == 2 -> LocalStrings.current["dialogs.shizuku_installing"]
-                            .ifEmpty { "Installing Shizuku…" }
-                        installPhase == -1 -> LocalStrings.current["dialogs.btn_retry"].ifEmpty { "Retry download" }
-                        else -> LocalStrings.current["dialogs.btn_download_shizuku"]
-                            .ifEmpty { "Download & install Shizuku" }
-                    }
-                    val downloadFailedText = LocalStrings.current["dialogs.shizuku_download_failed"]
-                        .ifEmpty { "Download failed. Check your connection and try again." }
-
-                    // Shared download + install pipeline — called by the consent
-                    // Continue button and by Retry after a failure.
-                    val startDownload: () -> Unit = {
-                        installPhase = 1
-                        installProgress = 0f
-                        installError = ""
-                        scope.launch {
-                            val result = ShizukuInstaller.downloadLatestApk(context) { p ->
-                                installProgress = p
-                            }
-                            if (result.apkFile == null) {
-                                installPhase = -1
-                                installError = result.error.ifBlank { downloadFailedText }
-                                return@launch
-                            }
-                            installPhase = 2
-                            when (val installResult = ShizukuInstaller.installApk(context, result.apkFile)) {
-                                is InstallResult.Installed -> {
-                                    installedBackend = ShizukuBackend.Kind.OFFICIAL
-                                    installPhase = 3
-                                }
-                                is InstallResult.Cancelled -> {
-                                    installPhase = 0
-                                }
-                                is InstallResult.Failed -> {
-                                    installPhase = -1
-                                    installError = installResult.reason
-                                }
-                            }
-                        }
-                    }
-
-                    if (installPhase == 0) {
-                        DialogButton(
-                            text = installLabel,
-                            onClick = { installPhase = 4 },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = colors,
-                            cardBackground = cardBackground,
-                            accent = true,
-                            borderAlphaOverride = dialogBorderAlpha
-                        )
-                    } else if (installPhase == 4) {
-                        Text(
-                            text = consentText,
-                            fontSize = ts.bodySmall,
-                            lineHeight = (ts.bodySmall.value * 1.3f).sp,
-                            color = colors.textSecondary,
-                            fontFamily = quicksandFontFamily,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            DialogButton(
-                                text = LocalStrings.current["dialogs.btn_cancel"].ifEmpty { "Cancel" },
-                                onClick = { installPhase = 0 },
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                cardBackground = cardBackground,
-                                accent = false,
-                                borderAlphaOverride = dialogBorderAlpha
-                            )
-                            DialogButton(
-                                text = LocalStrings.current["dialogs.btn_continue"].ifEmpty { "Continue" },
-                                onClick = startDownload,
-                                modifier = Modifier.weight(1f),
-                                colors = colors,
-                                cardBackground = cardBackground,
-                                accent = true,
-                                borderAlphaOverride = dialogBorderAlpha
-                            )
-                        }
-                    } else {
-                        DialogButton(
-                            text = installLabel,
-                            onClick = {
-                                if (installPhase == 1 || installPhase == 2) return@DialogButton
-                                startDownload()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = colors,
-                            cardBackground = cardBackground,
-                            accent = true,
-                            borderAlphaOverride = dialogBorderAlpha
-                        )
-                    }
-
-                if (installPhase == -1 && installError.isNotEmpty()) {
-                        Text(
-                            text = installError,
-                            fontSize = ts.bodySmall,
-                            lineHeight = (ts.bodySmall.value * 1.3f).sp,
-                            color = Color(0xFFEF5350),
-                            fontFamily = quicksandFontFamily,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
                 // ── Steps — numbered, so the path is obvious ──
                 DialogSectionLabel(
                     strings["dialogs.backend_how_to_start"].ifEmpty { "How to start %s" }.replace("%s", backendName),
@@ -347,13 +216,8 @@ fun ShizukuHelpDialog(
                 if (!shizukuInstalled) {
                     DialogStepRow(
                         1,
-                        if (BuildConfig.CAN_INSTALL_SHIZUKU) {
-                            strings["dialogs.backend_step_install_button"].ifEmpty { "Install %s with the button above" }
-                                .replace("%s", backendName)
-                        } else {
-                            strings["dialogs.backend_step_install_manual"].ifEmpty { "Install %s from its official source, then return to GAMA" }
-                                .replace("%s", backendName)
-                        },
+                        strings["dialogs.backend_step_install_manual"].ifEmpty { "Install %s from its official source, then return to GAMA" }
+                            .replace("%s", backendName),
                         colors = colors
                     )
                     DialogStepRow(

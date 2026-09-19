@@ -15,8 +15,8 @@ plugins {
 //        keyPassword=...
 //   2. Environment variables: GAMA_STORE_FILE, GAMA_STORE_PASSWORD,
 //      GAMA_KEY_ALIAS, GAMA_KEY_PASSWORD
-//   3. Neither present → debug and verification tasks still work; release
-//      artifacts fail fast until signing credentials are configured.
+//   3. Neither present → debug, verification, and unsigned release tasks work;
+//      configured credentials sign the release artifact when available.
 val keystoreProps = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
@@ -32,19 +32,6 @@ val hasSigningCredentials = signingProp("storeFile", "GAMA_STORE_FILE") != null 
     signingProp("storePassword", "GAMA_STORE_PASSWORD") != null &&
     signingProp("keyAlias", "GAMA_KEY_ALIAS") != null &&
     signingProp("keyPassword", "GAMA_KEY_PASSWORD") != null
-
-val requestedReleaseArtifact = gradle.startParameter.taskNames.any { task ->
-    task.substringAfterLast(':').contains("Release", ignoreCase = true) &&
-        (task.contains("assemble", ignoreCase = true) || task.contains("bundle", ignoreCase = true))
-}
-
-if (requestedReleaseArtifact && !hasSigningCredentials) {
-    throw GradleException(
-        "GAMA: refusing to build a release artifact without signing credentials. " +
-            "Configure keystore.properties or GAMA_STORE_FILE/GAMA_STORE_PASSWORD/" +
-            "GAMA_KEY_ALIAS/GAMA_KEY_PASSWORD."
-    )
-}
 
 android {
     namespace = "com.popovicialinc.gama"
@@ -112,18 +99,6 @@ android {
         aidl = true
         resValues = false
         shaders = false
-    }
-
-    flavorDimensions += "distribution"
-    productFlavors {
-        create("github") {
-            dimension = "distribution"
-            buildConfigField("boolean", "CAN_INSTALL_SHIZUKU", "true")
-        }
-        create("play") {
-            dimension = "distribution"
-            buildConfigField("boolean", "CAN_INSTALL_SHIZUKU", "false")
-        }
     }
 
     packaging {

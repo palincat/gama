@@ -185,6 +185,8 @@
     "state_permission_needed": "Permission needed",
     "source_quick_settings": "Quick Settings",
     "source_boot_restore": "Boot restore",
+    "source_tasker": "Tasker",
+    "source_gama": "GAMA",
     "detail_switch_completed": "Renderer switch completed.",
     "detail_no_backend_boot": "No privileged backend became ready after boot.",
     "detail_no_backend": "No privileged backend is available.",
@@ -197,7 +199,8 @@
     "status_setprop_failed": "%s setprop FAILED: %s",
     "status_applied_unreadable": "%s applied, but the renderer prop reads back as '%s'",
     "toast_switched": "Switched to %s",
-    "toast_setprop_failed": "Could not set renderer — %s"
+    "toast_setprop_failed": "Could not set renderer — %s",
+    "detail_unknown_request": "Unknown renderer request."
   },
   "resources": {
     "title": "RESOURCES"
@@ -284,7 +287,8 @@
     "export_support_bundle": "Export support bundle",
     "unknown_date": "unknown date",
     "no_details": "No details",
-    "app_crash": "APP CRASH"
+    "app_crash": "APP CRASH",
+    "unknown_thread": "unknown"
   },
   "language_panel": {
     "title": "LANGUAGE",
@@ -322,7 +326,8 @@
     "tasker_token_label": "GAMA Tasker token",
     "copy_token": "Copy token",
     "token_copied": "Tasker token copied",
-    "open_full_guide": "Open full guide"
+    "open_full_guide": "Open full guide",
+    "tasker_link_title": "Tasker Guide"
   },
   "main": {
     "standing_by": "Standing by and awaiting your command",
@@ -438,13 +443,6 @@
     "shizuku_not_running_body": "Shizuku needs to be running for GAMA to work.\n\n1. Open the Shizuku app\n2. Tap 'Start' to activate the service\n3. Come back to GAMA\n\nIf Shizuku won't start, follow the wireless pairing instructions inside the Shizuku app.",
     "shizuku_permission_body": "GAMA needs permission to use Shizuku.\n\n1. Open Shizuku\n2. Tap 'Authorized apps'\n3. Find GAMA and enable it\n4. Close GAMA from the recents list\n5. Reopen GAMA\n",
     "shizuku_unknown_error": "Unknown error",
-    "btn_download_shizuku": "Download & install Shizuku",
-    "shizuku_downloading": "Downloading Shizuku… %s%",
-    "shizuku_installing": "Installing Shizuku…",
-    "shizuku_download_consent": "This downloads the Shizuku APK from GitHub and installs it directly, bypassing F-Droid's checks. Continue?",
-    "shizuku_download_failed": "Download failed. Check your connection and try again.",
-    "shizuku_install_blocked": "GAMA can't open the installer. Enable 'Install unknown apps' for GAMA in Settings, then retry.",
-    "btn_retry": "Retry download",
     "btn_open_shizuku": "Open Shizuku",
     "root_title": "Choose your access method",
     "root_body": "GAMA needs shell access to switch the renderer. Grant it via Shizuku, or — if your device is rooted — use the root backend (Magisk / KernelSU).",
@@ -485,7 +483,6 @@
     "backend_intro_not_running": "GAMA needs the %s service running to switch the renderer.",
     "backend_intro_permission": "GAMA is installed, but hasn't been authorized in %s yet.",
     "backend_how_to_start": "How to start %s",
-    "backend_step_install_button": "Install %s with the button above",
     "backend_step_install_manual": "Install %s from its official source, then return to GAMA",
     "backend_step_open_start": "Open %s and tap \"Start\"",
     "backend_step_come_back": "Come back to GAMA",
@@ -505,26 +502,6 @@
     "egg_tagline": "One long press. One small secret.\nZero extra permissions.",
     "egg_secret": "You were never supposed to find this.\n(We hoped you would.)",
     "egg_return": "RETURN TO GAMA",
-    "install_err_bad_host": "Resolved download URL is not a GitHub host — aborting",
-    "install_err_http_download": "GitHub replied HTTP %s while downloading the APK",
-    "install_err_redirect": "APK download redirected to an untrusted host",
-    "install_err_too_large": "Downloaded APK is unexpectedly large",
-    "install_err_size_limit": "Downloaded APK exceeds the safety size limit",
-    "install_err_too_small": "Downloaded file is too small to be an APK",
-    "install_err_not_apk": "Downloaded file isn't a valid APK",
-    "install_err_checksum": "APK checksum mismatch (expected %s, got %s)",
-    "install_err_not_shizuku": "Downloaded file isn't Shizuku (%s)",
-    "install_err_no_apk": "No APK found on the GitHub release page",
-    "install_err_api_rate": "GitHub API rate limit or error (HTTP %s)",
-    "install_err_api_unreachable": "GitHub API unreachable",
-    "install_err_http_page": "GitHub replied HTTP %s on the release page",
-    "install_err_http_assets": "GitHub replied HTTP %s on the assets page",
-    "install_err_no_link": "No APK link found on the GitHub release page",
-    "install_err_unreachable": "Couldn't reach GitHub (%s)",
-    "install_err_start": "Couldn't start the installer: %s",
-    "install_err_invalid_intent": "The system installer returned an invalid confirmation intent",
-    "install_err_failed": "Installation failed (status %s)",
-    "install_err_start_install": "Couldn't start the install: %s"
   },
   "widget": {
     "renderer_label": "RENDERER",
@@ -563,8 +540,7 @@
     "state_vulkan": "Vulkan · tap for OpenGL",
     "state_opengl": "OpenGL · tap for Vulkan",
     "state_switching": "Switching…",
-    "state_shizuku_not_running": "Shizuku isn't running",
-    "state_permission_needed": "Permission needed",
+    "state_backend_not_running": "%s isn't running",
     "state_failed": "Failed — tap to retry"
   },
   "notification": {
@@ -623,7 +599,8 @@
     "semantics_button": "%s, %s button",
     "semantics_button_disabled": "%s, %s button, disabled",
     "backend_not_running_toast": "%s not running!",
-    "unknown_package": "unknown package"
+    "unknown_package": "unknown package",
+    "help": "Help"
   },
   "search": {
     "title": "SEARCH",
@@ -1449,14 +1426,6 @@
     "trail_length": "TRAIL LENGTH",
     "how_far_the_fading_tail_extends_behind_each_falling_column": "How far the fading tail extends behind each falling column"
   },
-  "tile": {
-    "label": "GAMA · Renderer",
-    "state_switching": "Switching…",
-    "state_failed": "Failed — tap to retry",
-    "state_vulkan": "Vulkan · tap for OpenGL",
-    "state_opengl": "OpenGL · tap for Vulkan",
-    "state_backend_not_running": "%s isn't running"
-  },
   "matrix": {
     "appearance_desc": "Glyph font size and background opacity",
     "density": "DENSITY",
@@ -1467,5 +1436,74 @@
     "speed_desc": "How fast characters fall down the screen",
     "trail_length": "TRAIL LENGTH",
     "trail_length_desc": "How far the fading tail extends behind each falling column"
+  },
+  "support_bundle": {
+    "title": "GAMA support bundle",
+    "generated": "Generated: %s",
+    "version": "Version: %s",
+    "version_unknown": "unknown",
+    "device": "Device: %s %s",
+    "android": "Android: %s (API %d)",
+    "renderer": "Renderer: %s; desired: %s",
+    "backend": "Backend: root=%s, binder=%s, permission=%s",
+    "last_action": "Last action: %s → %s; success=%s; %s",
+    "recent_crash_log": "Recent GAMA crash log:"
+  },
+  "verbose": {
+    "running": "Running: %s",
+    "output": "Output: %s",
+    "stopping": "Stopping: %s",
+    "keyboard_restart_failed": "Keyboard restart failed: %s",
+    "launcher_restart_failed": "Launcher restart failed (%s): %s",
+    "launcher_skipped_xiaomi": "Launcher restart skipped on Xiaomi / HyperOS for safety.",
+    "launcher_skipped_no_home": "Launcher restart skipped: could not resolve the active HOME app.",
+    "systemui_restart_failed": "System UI restart failed: %s",
+    "systemui_skipped_cooldown": "System UI restart skipped: 15-second cooldown is active.",
+    "restoring_ime": "Restoring original IME after %s: %s",
+    "setprop_readback_error": "setprop reported an error, but the prop reads back as '%s' — continuing."
+  },
+  "search_keywords": {
+    "appearance_panel": "appearance,visuals,theme,ui,colors,effects,particles,look,settings section,aspect,temă,culori,efecte,particule",
+    "colors_panel": "colors,colour,accent,dynamic color,color picker,palette,custom color,culori,accent,paletă,culoare",
+    "effects_panel": "effects,blur,shadows,visual effects,glass,cards,efecte,umbre,sticlă,carduri",
+    "particles_panel": "particles,stars,matrix,background,rain,parallax,motion,particule,stele,fundal,mișcare",
+    "renderer_panel": "renderer,opengl,vulkan,switch,aggressive,launcher,keyboard,gpuwatch,redare,motor,grafic,schimbare,tastatură",
+    "system_panel": "app,system,notifications,backup,language,logs,verbose,tap outside,sistem,notificări,limbă,jurnale",
+    "notifications_panel": "notifications,reminders,alerts,open gl reminder,opengl reminder,notificări,memento,alerte",
+    "backup_panel": "backup,restore,export,import,settings backup,save settings,copie,rezervă,restaurare,salvare",
+    "language_panel": "language,translation,locale,english,romanian,romana,limba,limbă,traducere",
+    "logs_panel": "logs,log,crash,crashes,crash log,debug,reports,system crash,jurnale,rapoarte,eroare",
+    "theme": "theme,mode,auto,dark,light,appearance,visuals,color mode,them,thme,teme,night",
+    "animations": "animations,animation,motion,movement,reduce motion,off,full,anim,smooth,transition,reduced",
+    "ui_scale": "ui,scale,size,interface size,zoom,75,100,125,text size,font size,big,small,large",
+    "stagger_animations": "stagger,stag,stager,staggered,cards,cascade,panel cards,entrance,animations,motion,one by one,instant",
+    "back_button_avoidance": "back,button,avoid,avoidance,duck,rescale,layout,overlap,floating,arrow",
+    "back_button_position": "back,button,position,side,left,right,inverted,inversed,inverse,search button,global button",
+    "card_shadows": "card,cards,shadow,shadows,drop shadow,gpu,performance,visual,depth,elevation",
+    "dynamic_color": "dynamic,material you,wallpaper,accent,monet,android 12,auto color,system color,automatic",
+    "advanced_color_picker": "hex,color picker,hex input,custom color,type color,#,picker,colour",
+    "accent_color": "accent,accent color,custom accent,color,colour,highlight,buttons,borders,picker,hex,primary color",
+    "blur": "blur,frosted,glass,frosted glass,panel blur,backdrop,depth,premium,translucent,blured",
+    "particles": "particles,stars,floating,dots,particle,animation,background animation,star,sparkle,living,feel",
+    "particle_style": "style,stars,matrix,rain,matrix rain,digital rain,glyphs,particle style,mode",
+    "star_mode": "star,star mode,stars,shape,look,glow,twinkle,sparkle,star shape",
+    "time_mode": "time,time mode,sun,moon,day,night,sky,real time,clock,daytime,sunrise,sunset",
+    "parallax": "parallax,tilt,gyro,gyroscope,motion,sensor,depth,3d,perspective",
+    "parallax_sensitivity": "parallax,sensitivity,tilt,gyro,strength,intensity,low,medium,high,motion",
+    "particle_speed": "speed,fast,slow,velocity,float speed,particle speed,drift",
+    "particle_count": "count,number,amount,density,particles,how many,more,less,performance,75,150,300",
+    "particle_refresh_rate": "refresh,refresh rate,fps,frame,native,performance,battery,poll,sensor",
+    "matrix_speed": "matrix,speed,rain,fall speed,cascade,slow,fast,velocity",
+    "matrix_density": "matrix,density,rain,columns,sparse,dense,column density,coverage",
+    "matrix_font_size": "matrix,font,size,glyph,text size,characters,small,large,big",
+    "matrix_fade": "matrix,fade,trail,length,tail,ghost,streak,short,long,full",
+    "aggressive_mode": "aggressive,mode,renderer,all packages,coverage,broad,every app,all apps,force,global",
+    "restart_launcher": "restart,launcher,switch,kill,force stop,miui,xiaomi,immediately,reload",
+    "restart_keyboard": "keyboard,input method,ime,restart,kill,force stop,gboard,samsung keyboard,after applying api,renderer",
+    "gpuwatch_shortcut": "gpuwatch,gpu watch,samsung,shortcut,gpu,button,monitor,overlay",
+    "verbose_output": "verbose,output,log,shell,command,debug,terminal,output,show output",
+    "tap_outside_to_close": "tap,outside,close,dismiss,panel,back button,click outside,touch outside,gesture",
+    "notifications_reminders": "notifications,reminders,alert,notify,opengl,reminder,ping,notification,notif",
+    "reminder_interval": "interval,reminder,frequency,how often,notification,2h,4h,6h,12h,24h,hours"
   }
 }

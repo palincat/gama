@@ -123,6 +123,7 @@ fun IntegrationsPanel(
     oledMode: Boolean = false
 ) {
     val ts = LocalTypeScale.current
+    val strings = LocalStrings.current
 
     // Hoisted above BouncyDialog so they exist before enter animation starts
     val scrollState = rememberScrollState()
@@ -166,7 +167,7 @@ fun IntegrationsPanel(
                 Spacer(modifier = Modifier.height(if (isLandscape) 24.dp else 40.dp))
 
                 CleanTitle(
-                    text = LocalStrings.current["integrations.title"].ifEmpty { "INTEGRATIONS" },
+                    text = strings["integrations.title"].ifEmpty { "INTEGRATIONS" },
                     fontSize = if (isLandscape) ts.displayMedium else ts.displayLarge,
                     colors = colors,
                     reverseGradient = false,
@@ -174,13 +175,24 @@ fun IntegrationsPanel(
                 )
 
                 Text(
-                    text = LocalStrings.current["integrations.subtitle"].ifEmpty { "Plug GAMA into your existing Android automations and shortcuts" },
+                    text = strings["integrations.subtitle"].ifEmpty { "Plug GAMA into your existing Android automations and shortcuts" },
                     fontSize = ts.labelLarge,
                     color = colors.textSecondary,
                     fontFamily = quicksandFontFamily,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold
                 )
+
+                // Resolved once — the landscape and portrait layouts below share these values
+                val taskerStatus = strings["integrations.tasker_status"].ifEmpty { "Available" }
+                val taskerAction = strings["integrations.tasker_action"].ifEmpty { "Open Guide" }
+                val taskerGuideTitle = strings["integrations.tasker_link_title"].ifEmpty { "Tasker Guide" }
+                val taskerGuideDesc = strings["integrations.tasker_link_desc"].ifEmpty { "This will open the GAMA Tasker integration guide on GitHub. It covers how to use broadcast intents to automate renderer switching based on time, app launch, WiFi network, and more." }
+                val qsTilesStatusAvailable = strings["integrations.qs_tiles_available"].ifEmpty { "1 tile" }
+                val qsTilesStatusUnavailable = strings["integrations.qs_tiles_unavailable"].ifEmpty { "Requires Android 7+" }
+                val qsTilesAction = strings["integrations.qs_tiles_action"].ifEmpty { "How to add" }
+                val qsTilesDialogTitle = strings["integrations.qs_tiles_dialog_title"].ifEmpty { "Adding QS Tiles" }
+                val qsTilesDialogBody = strings["integrations.qs_tiles_dialog_body"].ifEmpty { "Pull down your notification shade and tap the Edit button (pencil icon). Scroll through the available tiles until you find the GAMA tile. Drag it into your active area, then tap Done. Tap the tile to switch between Vulkan and OpenGL; its subtitle shows the current renderer." }
 
                 // ── Tasker ──────────────────────────────────────────────────
                 AnimatedElement(visible = visible, staggerIndex = 1, totalItems = 3) {
@@ -192,16 +204,16 @@ fun IntegrationsPanel(
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
                                 IntegrationInfoCard(
-                                    title = LocalStrings.current["integrations.tasker"].ifEmpty { "TASKER" },
-                                    description = LocalStrings.current["integrations.tasker_desc"].ifEmpty { "Use broadcast intents to switch renderers automatically based on time, app launch, WiFi, or anything Tasker can do" },
-                                    statusLabel = "Available",
+                                    title = strings["integrations.tasker"].ifEmpty { "TASKER" },
+                                    description = strings["integrations.tasker_desc"].ifEmpty { "Use broadcast intents to switch renderers automatically based on time, app launch, WiFi, or anything Tasker can do" },
+                                    statusLabel = taskerStatus,
                                     statusOk = true,
-                                    actionLabel = "Open Guide",
+                                    actionLabel = taskerAction,
                                     onAction = {
                                         onLinkSelected(
                                             "https://github.com/popovicialinc/gama/blob/main/!assets/GAMA_Tasker_Guide.pdf",
-                                            "Tasker Guide",
-                                            "This will open the GAMA Tasker integration guide on GitHub. It covers how to use broadcast intents to automate renderer switching based on time, app launch, WiFi network, and more."
+                                            taskerGuideTitle,
+                                            taskerGuideDesc
                                         )
                                     },
                                     colors = colors,
@@ -213,15 +225,15 @@ fun IntegrationsPanel(
                             Box(modifier = Modifier.weight(1f)) {
                                 val tileAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                                 IntegrationInfoCard(
-                                    title = LocalStrings.current["integrations.qs_tiles"].ifEmpty { "QUICK SETTINGS TILES" },
-                                    description = LocalStrings.current["integrations.qs_tiles_desc"].ifEmpty { "One tile that toggles between Vulkan and OpenGL — tap to switch, the subtitle shows the current renderer" },
-                                    statusLabel = if (tileAvailable) "1 tile" else "Requires Android 7+",
+                                    title = strings["integrations.qs_tiles"].ifEmpty { "QUICK SETTINGS TILES" },
+                                    description = strings["integrations.qs_tiles_desc"].ifEmpty { "One tile that toggles between Vulkan and OpenGL — tap to switch, the subtitle shows the current renderer" },
+                                    statusLabel = if (tileAvailable) qsTilesStatusAvailable else qsTilesStatusUnavailable,
                                     statusOk = tileAvailable,
-                                    actionLabel = if (tileAvailable) "How to add" else null,
+                                    actionLabel = if (tileAvailable) qsTilesAction else null,
                                     onAction = if (tileAvailable) ({
                                         onInfoRequested(
-                                            "Adding QS Tiles",
-                                            "Pull down your notification shade and tap the Edit button (pencil icon). Scroll through the available tiles until you find the GAMA tile. Drag it into your active area, then tap Done. Tap the tile to switch between Vulkan and OpenGL; its subtitle shows the current renderer."
+                                            qsTilesDialogTitle,
+                                            qsTilesDialogBody
                                         )
                                     }) else null,
                                     colors = colors,
@@ -233,16 +245,16 @@ fun IntegrationsPanel(
                         }
                     } else {
                         IntegrationInfoCard(
-                            title = LocalStrings.current["integrations.tasker"].ifEmpty { "TASKER" },
-                            description = LocalStrings.current["integrations.tasker_desc"].ifEmpty { "Use broadcast intents to switch renderers automatically based on time, app launch, WiFi, or anything Tasker can do" },
-                            statusLabel = "Available",
+                            title = strings["integrations.tasker"].ifEmpty { "TASKER" },
+                            description = strings["integrations.tasker_desc"].ifEmpty { "Use broadcast intents to switch renderers automatically based on time, app launch, WiFi, or anything Tasker can do" },
+                            statusLabel = taskerStatus,
                             statusOk = true,
-                            actionLabel = "Open Guide",
+                            actionLabel = taskerAction,
                             onAction = {
                                 onLinkSelected(
                                     "https://github.com/popovicialinc/gama/blob/main/!assets/GAMA_Tasker_Guide.pdf",
-                                    "Tasker Guide",
-                                    "This will open the GAMA Tasker integration guide on GitHub. It covers how to use broadcast intents to automate renderer switching based on time, app launch, WiFi network, and more."
+                                    taskerGuideTitle,
+                                    taskerGuideDesc
                                 )
                             },
                             colors = colors,
@@ -258,15 +270,15 @@ fun IntegrationsPanel(
                     if (!isLandscape) {
                         val tileAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                         IntegrationInfoCard(
-                            title = LocalStrings.current["integrations.qs_tiles"].ifEmpty { "QUICK SETTINGS TILES" },
-                            description = LocalStrings.current["integrations.qs_tiles_desc"].ifEmpty { "One tile that toggles between Vulkan and OpenGL — tap to switch, the subtitle shows the current renderer" },
-                            statusLabel = if (tileAvailable) "1 tile" else "Requires Android 7+",
+                            title = strings["integrations.qs_tiles"].ifEmpty { "QUICK SETTINGS TILES" },
+                            description = strings["integrations.qs_tiles_desc"].ifEmpty { "One tile that toggles between Vulkan and OpenGL — tap to switch, the subtitle shows the current renderer" },
+                            statusLabel = if (tileAvailable) qsTilesStatusAvailable else qsTilesStatusUnavailable,
                             statusOk = tileAvailable,
-                            actionLabel = if (tileAvailable) "How to add" else null,
+                            actionLabel = if (tileAvailable) qsTilesAction else null,
                             onAction = if (tileAvailable) ({
                                 onInfoRequested(
-                                    "Adding QS Tiles",
-                                    "Pull down your notification shade and tap the Edit button (pencil icon). Scroll through the available tiles until you find the GAMA tile. Drag it into your active area, then tap Done. Tap the tile to switch between Vulkan and OpenGL; its subtitle shows the current renderer."
+                                    qsTilesDialogTitle,
+                                    qsTilesDialogBody
                                 )
                             }) else null,
                             colors = colors,

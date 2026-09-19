@@ -380,7 +380,13 @@ fun NotificationsPanel(
     oledMode: Boolean
 ) {
     val ts = LocalTypeScale.current
-    val intervalLabels = listOf("2 h", "4 h", "6 h", "12 h", "24 h")
+    val intervalLabels = listOf(
+        LocalStrings.current["text_catalog.2_h"].ifEmpty { "2 h" },
+        LocalStrings.current["text_catalog.4_h"].ifEmpty { "4 h" },
+        LocalStrings.current["text_catalog.6_h"].ifEmpty { "6 h" },
+        LocalStrings.current["text_catalog.12_h"].ifEmpty { "12 h" },
+        LocalStrings.current["text_catalog.24_h"].ifEmpty { "24 h" }
+    )
 
     PanelScaffold(
         visible = visible, onDismiss = onDismiss,

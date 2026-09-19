@@ -357,6 +357,16 @@ internal fun SearchSelectorCard(
     }
 }
 
+// Keyword index for a search entry, read from the active translation. The stored
+// value is a comma-separated list; `english` is the untranslated fallback used
+// when the key is missing.
+@Composable
+private fun searchKeywords(id: String, english: String): List<String> =
+    LocalStrings.current["search_keywords.$id"].ifEmpty { english }
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
 @Composable
 fun SettingsSearchPanel(
     visible: Boolean,
@@ -607,22 +617,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "appearance_panel",
             title = strings["settings.appearance"].ifEmpty { "APPEARANCE" },
-            keywords = listOf(
-                "appearance",
-                "visuals",
-                "theme",
-                "ui",
-                "colors",
-                "effects",
-                "particles",
-                "look",
-                "settings section",
-                "aspect",
-                "temă",
-                "culori",
-                "efecte",
-                "particule"
-            ),
+            keywords = searchKeywords("appearance_panel", "appearance,visuals,theme,ui,colors,effects,particles,look,settings section,aspect,temă,culori,efecte,particule"),
             path = strings["settings.title"].ifEmpty { "SETTINGS" }
         ) {
             Column {
@@ -638,19 +633,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "colors_panel",
             title = strings["colors.title"].ifEmpty { "COLORS" },
-            keywords = listOf(
-                "colors",
-                "colour",
-                "accent",
-                "dynamic color",
-                "color picker",
-                "palette",
-                "custom color",
-                "culori",
-                "accent",
-                "paletă",
-                "culoare"
-            ),
+            keywords = searchKeywords("colors_panel", "colors,colour,accent,dynamic color,color picker,palette,custom color,culori,accent,paletă,culoare"),
             path = trPath(pathSettings, pathAppearance)
         ) {
             Column {
@@ -666,18 +649,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "effects_panel",
             title = strings["effects.title"].ifEmpty { "EFFECTS" },
-            keywords = listOf(
-                "effects",
-                "blur",
-                "shadows",
-                "visual effects",
-                "glass",
-                "cards",
-                "efecte",
-                "umbre",
-                "sticlă",
-                "carduri"
-            ),
+            keywords = searchKeywords("effects_panel", "effects,blur,shadows,visual effects,glass,cards,efecte,umbre,sticlă,carduri"),
             path = trPath(pathSettings, pathAppearance)
         ) {
             Column {
@@ -693,19 +665,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particles_panel",
             title = strings["particles.title"].ifEmpty { "PARTICLES" },
-            keywords = listOf(
-                "particles",
-                "stars",
-                "matrix",
-                "background",
-                "rain",
-                "parallax",
-                "motion",
-                "particule",
-                "stele",
-                "fundal",
-                "mișcare"
-            ),
+            keywords = searchKeywords("particles_panel", "particles,stars,matrix,background,rain,parallax,motion,particule,stele,fundal,mișcare"),
             path = trPath(pathSettings, pathAppearance)
         ) {
             Column {
@@ -721,21 +681,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "renderer_panel",
             title = strings["renderer.title"].ifEmpty { "RENDERER" },
-            keywords = listOf(
-                "renderer",
-                "opengl",
-                "vulkan",
-                "switch",
-                "aggressive",
-                "launcher",
-                "keyboard",
-                "gpuwatch",
-                "redare",
-                "motor",
-                "grafic",
-                "schimbare",
-                "tastatură"
-            ),
+            keywords = searchKeywords("renderer_panel", "renderer,opengl,vulkan,switch,aggressive,launcher,keyboard,gpuwatch,redare,motor,grafic,schimbare,tastatură"),
             path = strings["settings.title"].ifEmpty { "SETTINGS" }
         ) {
             Column {
@@ -751,20 +697,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "system_panel",
             title = strings["settings.system"].ifEmpty { "SYSTEM" },
-            keywords = listOf(
-                "app",
-                "system",
-                "notifications",
-                "backup",
-                "language",
-                "logs",
-                "verbose",
-                "tap outside",
-                "sistem",
-                "notificări",
-                "limbă",
-                "jurnale"
-            ),
+            keywords = searchKeywords("system_panel", "app,system,notifications,backup,language,logs,verbose,tap outside,sistem,notificări,limbă,jurnale"),
             path = strings["settings.title"].ifEmpty { "SETTINGS" }
         ) {
             Column {
@@ -780,16 +713,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "notifications_panel",
             title = strings["system.notifications"].ifEmpty { "NOTIFICATIONS" },
-            keywords = listOf(
-                "notifications",
-                "reminders",
-                "alerts",
-                "open gl reminder",
-                "opengl reminder",
-                "notificări",
-                "memento",
-                "alerte"
-            ),
+            keywords = searchKeywords("notifications_panel", "notifications,reminders,alerts,open gl reminder,opengl reminder,notificări,memento,alerte"),
             path = trPath(pathSettings, pathSystem)
         ) {
             Column {
@@ -805,18 +729,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "backup_panel",
             title = strings["system.backup"].ifEmpty { "BACKUP & RESTORE" },
-            keywords = listOf(
-                "backup",
-                "restore",
-                "export",
-                "import",
-                "settings backup",
-                "save settings",
-                "copie",
-                "rezervă",
-                "restaurare",
-                "salvare"
-            ),
+            keywords = searchKeywords("backup_panel", "backup,restore,export,import,settings backup,save settings,copie,rezervă,restaurare,salvare"),
             path = trPath(pathSettings, pathSystem)
         ) {
             Column {
@@ -832,17 +745,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "language_panel",
             title = strings["settings.language"].ifEmpty { "LANGUAGE" },
-            keywords = listOf(
-                "language",
-                "translation",
-                "locale",
-                "english",
-                "romanian",
-                "romana",
-                "limba",
-                "limbă",
-                "traducere"
-            ),
+            keywords = searchKeywords("language_panel", "language,translation,locale,english,romanian,romana,limba,limbă,traducere"),
             path = trPath(pathSettings, pathSystem)
         ) {
             Column {
@@ -858,19 +761,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "logs_panel",
             title = strings["system.crash_log"].ifEmpty { "LOGS" },
-            keywords = listOf(
-                "logs",
-                "log",
-                "crash",
-                "crashes",
-                "crash log",
-                "debug",
-                "reports",
-                "system crash",
-                "jurnale",
-                "rapoarte",
-                "eroare"
-            ),
+            keywords = searchKeywords("logs_panel", "logs,log,crash,crashes,crash log,debug,reports,system crash,jurnale,rapoarte,eroare"),
             path = trPath(pathSettings, pathSystem)
         ) {
             Column {
@@ -888,20 +779,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "theme",
             title = tr("appearance.theme", "THEME"),
-            keywords = listOf(
-                "theme",
-                "mode",
-                "auto",
-                "dark",
-                "light",
-                "appearance",
-                "visuals",
-                "color mode",
-                "them",
-                "thme",
-                "teme",
-                "night"
-            ),
+            keywords = searchKeywords("theme", "theme,mode,auto,dark,light,appearance,visuals,color mode,them,thme,teme,night"),
             path = pathAppearance
         ) {
             Column {
@@ -932,19 +810,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "animations",
             title = tr("appearance.animations", "ANIMATIONS"),
-            keywords = listOf(
-                "animations",
-                "animation",
-                "motion",
-                "movement",
-                "reduce motion",
-                "off",
-                "full",
-                "anim",
-                "smooth",
-                "transition",
-                "reduced"
-            ),
+            keywords = searchKeywords("animations", "animations,animation,motion,movement,reduce motion,off,full,anim,smooth,transition,reduced"),
             path = pathAppearance
         ) {
             Column {
@@ -974,21 +840,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "ui_scale",
             title = tr("appearance.ui_scale", "UI SCALE"),
-            keywords = listOf(
-                "ui",
-                "scale",
-                "size",
-                "interface size",
-                "zoom",
-                "75",
-                "100",
-                "125",
-                "text size",
-                "font size",
-                "big",
-                "small",
-                "large"
-            ),
+            keywords = searchKeywords("ui_scale", "ui,scale,size,interface size,zoom,75,100,125,text size,font size,big,small,large"),
             path = pathAppearance
         ) {
             Column {
@@ -1002,7 +854,11 @@ fun SettingsSearchPanel(
                     cardBackground = cardBackground
                 ) {
                     GlideOptionSelector(
-                        options = listOf("75%", "100%", "125%"),
+                        options = listOf(
+                            tr("appearance.scale_75", "75%"),
+                            tr("appearance.scale_100", "100%"),
+                            tr("appearance.scale_125", "125%")
+                        ),
                         selectedIndex = uiScale,
                         onOptionSelected = { performHaptic(); onUiScaleChange(it) },
                         colors = colors,
@@ -1014,20 +870,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "stagger_animations",
             title = tr("appearance.stagger_animations", "STAGGER ANIMATIONS"),
-            keywords = listOf(
-                "stagger",
-                "stag",
-                "stager",
-                "staggered",
-                "cards",
-                "cascade",
-                "panel cards",
-                "entrance",
-                "animations",
-                "motion",
-                "one by one",
-                "instant"
-            ),
+            keywords = searchKeywords("stagger_animations", "stagger,stag,stager,staggered,cards,cascade,panel cards,entrance,animations,motion,one by one,instant"),
             path = pathAppearance
         ) {
             Column {
@@ -1049,18 +892,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "back_button_avoidance",
             title = tr("appearance.back_button_avoidance", "BACK BUTTON AVOIDANCE"),
-            keywords = listOf(
-                "back",
-                "button",
-                "avoid",
-                "avoidance",
-                "duck",
-                "rescale",
-                "layout",
-                "overlap",
-                "floating",
-                "arrow"
-            ),
+            keywords = searchKeywords("back_button_avoidance", "back,button,avoid,avoidance,duck,rescale,layout,overlap,floating,arrow"),
             path = pathAppearance
         ) {
             Column {
@@ -1082,19 +914,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "back_button_position",
             title = tr("system.back_button_position", "BACK BUTTON POSITION"),
-            keywords = listOf(
-                "back",
-                "button",
-                "position",
-                "side",
-                "left",
-                "right",
-                "inverted",
-                "inversed",
-                "inverse",
-                "search button",
-                "global button"
-            ),
+            keywords = searchKeywords("back_button_position", "back,button,position,side,left,right,inverted,inversed,inverse,search button,global button"),
             path = pathSystem
         ) {
             Column {
@@ -1123,18 +943,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "card_shadows",
             title = tr("appearance.card_shadows", "CARD SHADOWS"),
-            keywords = listOf(
-                "card",
-                "cards",
-                "shadow",
-                "shadows",
-                "drop shadow",
-                "gpu",
-                "performance",
-                "visual",
-                "depth",
-                "elevation"
-            ),
+            keywords = searchKeywords("card_shadows", "card,cards,shadow,shadows,drop shadow,gpu,performance,visual,depth,elevation"),
             path = trPath(pathAppearance, pathEffects),
             enabledForShadow = { !oledMode }
         ) {
@@ -1159,17 +968,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "dynamic_color",
             title = tr("colors.dynamic_color", "DYNAMIC COLOR"),
-            keywords = listOf(
-                "dynamic",
-                "material you",
-                "wallpaper",
-                "accent",
-                "monet",
-                "android 12",
-                "auto color",
-                "system color",
-                "automatic"
-            ),
+            keywords = searchKeywords("dynamic_color", "dynamic,material you,wallpaper,accent,monet,android 12,auto color,system color,automatic"),
             path = trPath(pathAppearance, pathColors),
             enabledForShadow = { dynamicColorAvailable }
         ) {
@@ -1190,16 +989,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "advanced_color_picker",
             title = tr("colors.advanced_picker", "HEX COLOR PICKER"),
-            keywords = listOf(
-                "hex",
-                "color picker",
-                "hex input",
-                "custom color",
-                "type color",
-                "#",
-                "picker",
-                "colour"
-            ),
+            keywords = searchKeywords("advanced_color_picker", "hex,color picker,hex input,custom color,type color,#,picker,colour"),
             path = trPath(pathAppearance, pathColors),
             enabledForShadow = { !useDynamicColor || !dynamicColorAvailable }
         ) {
@@ -1220,19 +1010,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "accent_color",
             title = tr("colors.accent_color", "ACCENT COLOR"),
-            keywords = listOf(
-                "accent",
-                "accent color",
-                "custom accent",
-                "color",
-                "colour",
-                "highlight",
-                "buttons",
-                "borders",
-                "picker",
-                "hex",
-                "primary color"
-            ),
+            keywords = searchKeywords("accent_color", "accent,accent color,custom accent,color,colour,highlight,buttons,borders,picker,hex,primary color"),
             path = trPath(pathAppearance, pathColors),
             enabledForShadow = { customColorControlsEnabled }
         ) {
@@ -1264,18 +1042,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "blur",
             title = tr("blur.title", "BLUR"),
-            keywords = listOf(
-                "blur",
-                "frosted",
-                "glass",
-                "frosted glass",
-                "panel blur",
-                "backdrop",
-                "depth",
-                "premium",
-                "translucent",
-                "blured"
-            ),
+            keywords = searchKeywords("blur", "blur,frosted,glass,frosted glass,panel blur,backdrop,depth,premium,translucent,blured"),
             path = trPath(pathAppearance, pathEffects)
         ) {
             Column {
@@ -1294,19 +1061,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particles",
             title = tr("particles.title", "PARTICLES"),
-            keywords = listOf(
-                "particles",
-                "stars",
-                "floating",
-                "dots",
-                "particle",
-                "animation",
-                "background animation",
-                "star",
-                "sparkle",
-                "living",
-                "feel"
-            ),
+            keywords = searchKeywords("particles", "particles,stars,floating,dots,particle,animation,background animation,star,sparkle,living,feel"),
             path = trPath(pathAppearance, pathEffects, pathParticles)
         ) {
             Column {
@@ -1324,24 +1079,14 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particle_style",
             title = tr("text_catalog.particle_style", "PARTICLE STYLE"),
-            keywords = listOf(
-                "style",
-                "stars",
-                "matrix",
-                "rain",
-                "matrix rain",
-                "digital rain",
-                "glyphs",
-                "particle style",
-                "mode"
-            ),
+            keywords = searchKeywords("particle_style", "style,stars,matrix,rain,matrix rain,digital rain,glyphs,particle style,mode"),
             path = trPath(pathAppearance, pathEffects, pathParticles),
             enabledForShadow = { particlesEnabled }
         ) {
             Column {
                 SearchSelectorCard(
                     title = tr("text_catalog.particle_style", "PARTICLE STYLE"),
-                    description = if (matrixMode) "Cascading columns of glyphs — the classic Matrix digital rain effect" else "Twinkling stars that float and shift with device tilt via parallax",
+                    description = if (matrixMode) tr("particles.style_matrix_desc", "Cascading columns of glyphs — the classic Matrix digital rain effect") else tr("particles.style_particles_desc", "Twinkling stars that float and shift with device tilt via parallax"),
                     colors = colors, cardBackground = cardBackground
                 ) {
                     GlideOptionSelector(
@@ -1358,17 +1103,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "star_mode",
             title = tr("particles.star_mode", "STAR MODE"),
-            keywords = listOf(
-                "star",
-                "star mode",
-                "stars",
-                "shape",
-                "look",
-                "glow",
-                "twinkle",
-                "sparkle",
-                "star shape"
-            ),
+            keywords = searchKeywords("star_mode", "star,star mode,stars,shape,look,glow,twinkle,sparkle,star shape"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathShapeAndLook),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1388,20 +1123,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "time_mode",
             title = tr("particles.time_mode", "TIME MODE"),
-            keywords = listOf(
-                "time",
-                "time mode",
-                "sun",
-                "moon",
-                "day",
-                "night",
-                "sky",
-                "real time",
-                "clock",
-                "daytime",
-                "sunrise",
-                "sunset"
-            ),
+            keywords = searchKeywords("time_mode", "time,time mode,sun,moon,day,night,sky,real time,clock,daytime,sunrise,sunset"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathShapeAndLook),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1421,17 +1143,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "parallax",
             title = tr("particles.parallax", "PARALLAX"),
-            keywords = listOf(
-                "parallax",
-                "tilt",
-                "gyro",
-                "gyroscope",
-                "motion",
-                "sensor",
-                "depth",
-                "3d",
-                "perspective"
-            ),
+            keywords = searchKeywords("parallax", "parallax,tilt,gyro,gyroscope,motion,sensor,depth,3d,perspective"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMotion),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1455,18 +1167,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "parallax_sensitivity",
             title = tr("particles.parallax_sensitivity", "PARALLAX SENSITIVITY"),
-            keywords = listOf(
-                "parallax",
-                "sensitivity",
-                "tilt",
-                "gyro",
-                "strength",
-                "intensity",
-                "low",
-                "medium",
-                "high",
-                "motion"
-            ),
+            keywords = searchKeywords("parallax_sensitivity", "parallax,sensitivity,tilt,gyro,strength,intensity,low,medium,high,motion"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMotion),
             enabledForShadow = { particlesEnabled && particleParallaxEnabled && !matrixMode }
         ) {
@@ -1498,7 +1199,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particle_speed",
             title = tr("text_catalog.particle_speed", "PARTICLE SPEED"),
-            keywords = listOf("speed", "fast", "slow", "velocity", "float speed", "particle speed", "drift"),
+            keywords = searchKeywords("particle_speed", "speed,fast,slow,velocity,float speed,particle speed,drift"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMotion),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1527,20 +1228,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particle_count",
             title = tr("text_catalog.particle_count", "PARTICLE COUNT"),
-            keywords = listOf(
-                "count",
-                "number",
-                "amount",
-                "density",
-                "particles",
-                "how many",
-                "more",
-                "less",
-                "performance",
-                "75",
-                "150",
-                "300"
-            ),
+            keywords = searchKeywords("particle_count", "count,number,amount,density,particles,how many,more,less,performance,75,150,300"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathPerformance),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1566,17 +1254,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "particle_refresh_rate",
             title = tr("text_catalog.particle_refresh_rate", "PARTICLE REFRESH RATE"),
-            keywords = listOf(
-                "refresh",
-                "refresh rate",
-                "fps",
-                "frame",
-                "native",
-                "performance",
-                "battery",
-                "poll",
-                "sensor"
-            ),
+            keywords = searchKeywords("particle_refresh_rate", "refresh,refresh rate,fps,frame,native,performance,battery,poll,sensor"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathPerformance),
             enabledForShadow = { particlesEnabled && !matrixMode }
         ) {
@@ -1622,7 +1300,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "matrix_speed",
             title = tr("text_catalog.matrix_speed", "MATRIX SPEED"),
-            keywords = listOf("matrix", "speed", "rain", "fall speed", "cascade", "slow", "fast", "velocity"),
+            keywords = searchKeywords("matrix_speed", "matrix,speed,rain,fall speed,cascade,slow,fast,velocity"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMatrixSettings),
             enabledForShadow = { particlesEnabled && matrixMode }
         ) {
@@ -1648,7 +1326,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "matrix_density",
             title = tr("text_catalog.matrix_density", "MATRIX DENSITY"),
-            keywords = listOf("matrix", "density", "rain", "columns", "sparse", "dense", "column density", "coverage"),
+            keywords = searchKeywords("matrix_density", "matrix,density,rain,columns,sparse,dense,column density,coverage"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMatrixSettings),
             enabledForShadow = { particlesEnabled && matrixMode }
         ) {
@@ -1674,7 +1352,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "matrix_font_size",
             title = tr("text_catalog.matrix_font_size", "MATRIX FONT SIZE"),
-            keywords = listOf("matrix", "font", "size", "glyph", "text size", "characters", "small", "large", "big"),
+            keywords = searchKeywords("matrix_font_size", "matrix,font,size,glyph,text size,characters,small,large,big"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMatrixSettings),
             enabledForShadow = { particlesEnabled && matrixMode }
         ) {
@@ -1700,7 +1378,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "matrix_fade",
             title = tr("text_catalog.matrix_trail_length", "MATRIX TRAIL LENGTH"),
-            keywords = listOf("matrix", "fade", "trail", "length", "tail", "ghost", "streak", "short", "long", "full"),
+            keywords = searchKeywords("matrix_fade", "matrix,fade,trail,length,tail,ghost,streak,short,long,full"),
             path = trPath(pathAppearance, pathEffects, pathParticles, pathMatrixSettings),
             enabledForShadow = { particlesEnabled && matrixMode }
         ) {
@@ -1730,18 +1408,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "aggressive_mode",
             title = tr("renderer.aggressive_mode", "AGGRESSIVE MODE"),
-            keywords = listOf(
-                "aggressive",
-                "mode",
-                "renderer",
-                "all packages",
-                "coverage",
-                "broad",
-                "every app",
-                "all apps",
-                "force",
-                "global"
-            ),
+            keywords = searchKeywords("aggressive_mode", "aggressive,mode,renderer,all packages,coverage,broad,every app,all apps,force,global"),
             path = pathRenderer
         ) {
             Column {
@@ -1764,17 +1431,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "restart_launcher",
             title = tr("renderer.kill_launcher", "RESTART LAUNCHER & SYSTEM UI"),
-            keywords = listOf(
-                "restart",
-                "launcher",
-                "switch",
-                "kill",
-                "force stop",
-                "miui",
-                "xiaomi",
-                "immediately",
-                "reload"
-            ),
+            keywords = searchKeywords("restart_launcher", "restart,launcher,switch,kill,force stop,miui,xiaomi,immediately,reload"),
             path = pathRenderer
         ) {
             Column {
@@ -1797,18 +1454,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "restart_keyboard",
             title = tr("renderer.kill_keyboard", "RESTART KEYBOARD ON SWITCH"),
-            keywords = listOf(
-                "keyboard",
-                "input method",
-                "ime",
-                "restart",
-                "kill",
-                "force stop",
-                "gboard",
-                "samsung keyboard",
-                "after applying api",
-                "renderer"
-            ),
+            keywords = searchKeywords("restart_keyboard", "keyboard,input method,ime,restart,kill,force stop,gboard,samsung keyboard,after applying api,renderer"),
             path = pathRenderer
         ) {
             Column {
@@ -1831,7 +1477,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "gpuwatch_shortcut",
             title = tr("text_catalog.gpuwatch_shortcut", "GPUWATCH SHORTCUT"),
-            keywords = listOf("gpuwatch", "gpu watch", "samsung", "shortcut", "gpu", "button", "monitor", "overlay"),
+            keywords = searchKeywords("gpuwatch_shortcut", "gpuwatch,gpu watch,samsung,shortcut,gpu,button,monitor,overlay"),
             path = pathRenderer
         ) {
             Column {
@@ -1855,17 +1501,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "verbose_output",
             title = tr("text_catalog.verbose_output", "VERBOSE OUTPUT"),
-            keywords = listOf(
-                "verbose",
-                "output",
-                "log",
-                "shell",
-                "command",
-                "debug",
-                "terminal",
-                "output",
-                "show output"
-            ),
+            keywords = searchKeywords("verbose_output", "verbose,output,log,shell,command,debug,terminal,output,show output"),
             path = pathSystem
         ) {
             Column {
@@ -1883,17 +1519,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "tap_outside_to_close",
             title = tr("renderer.tap_outside_to_close", "TAP OUTSIDE TO CLOSE"),
-            keywords = listOf(
-                "tap",
-                "outside",
-                "close",
-                "dismiss",
-                "panel",
-                "back button",
-                "click outside",
-                "touch outside",
-                "gesture"
-            ),
+            keywords = searchKeywords("tap_outside_to_close", "tap,outside,close,dismiss,panel,back button,click outside,touch outside,gesture"),
             path = pathSystem
         ) {
             Column {
@@ -1915,17 +1541,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "notifications_reminders",
             title = tr("text_catalog.notifications_reminders", "NOTIFICATIONS / REMINDERS"),
-            keywords = listOf(
-                "notifications",
-                "reminders",
-                "alert",
-                "notify",
-                "opengl",
-                "reminder",
-                "ping",
-                "notification",
-                "notif"
-            ),
+            keywords = searchKeywords("notifications_reminders", "notifications,reminders,alert,notify,opengl,reminder,ping,notification,notif"),
             path = trPath(pathSystem, pathNotifications)
         ) {
             Column {
@@ -1947,19 +1563,7 @@ fun SettingsSearchPanel(
         SettingsSearchItem(
             id = "reminder_interval",
             title = tr("notifications.interval", "REMINDER INTERVAL"),
-            keywords = listOf(
-                "interval",
-                "reminder",
-                "frequency",
-                "how often",
-                "notification",
-                "2h",
-                "4h",
-                "6h",
-                "12h",
-                "24h",
-                "hours"
-            ),
+            keywords = searchKeywords("reminder_interval", "interval,reminder,frequency,how often,notification,2h,4h,6h,12h,24h,hours"),
             path = trPath(pathSystem, pathNotifications),
             enabledForShadow = { notificationsEnabled }
         ) {
@@ -1974,7 +1578,13 @@ fun SettingsSearchPanel(
                     cardBackground = cardBackground
                 ) {
                     GlideOptionSelector(
-                        options = listOf("2 h", "4 h", "6 h", "12 h", "24 h"),
+                        options = listOf(
+                            tr("text_catalog.2_h", "2 h"),
+                            tr("text_catalog.4_h", "4 h"),
+                            tr("text_catalog.6_h", "6 h"),
+                            tr("text_catalog.12_h", "12 h"),
+                            tr("text_catalog.24_h", "24 h")
+                        ),
                         selectedIndex = notifIntervalIndex.coerceIn(0, 4),
                         onOptionSelected = { performHaptic(); onNotifIntervalChange(it) },
                         colors = colors,

@@ -604,6 +604,8 @@ fun MainContentCards(
 private fun localizedActionSource(strings: GamaStrings, source: String): String = when (source) {
     "Quick Settings" -> strings["renderer.source_quick_settings"].ifEmpty { source }
     "Boot restore" -> strings["renderer.source_boot_restore"].ifEmpty { source }
+    "Tasker" -> strings["renderer.source_tasker"].ifEmpty { source }
+    "GAMA" -> strings["renderer.source_gama"].ifEmpty { source }
     else -> source
 }
 
@@ -613,6 +615,7 @@ private fun localizedActionDetail(strings: GamaStrings, detail: String): String 
     "No privileged backend is available." -> strings["renderer.detail_no_backend"].ifEmpty { detail }
     "The renderer property could not be verified." -> strings["renderer.detail_not_verified"].ifEmpty { detail }
     "The renderer command failed unexpectedly." -> strings["renderer.detail_command_failed"].ifEmpty { detail }
+    "Unknown renderer request." -> strings["renderer.detail_unknown_request"].ifEmpty { detail }
     else -> detail
 }
 

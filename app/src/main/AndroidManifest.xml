@@ -4,12 +4,6 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
-    <!-- Required to download the Shizuku APK from the official GitHub releases. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Used only by the GitHub distribution to launch the installer for the
-         Shizuku APK downloaded from the official RikkaApps releases. The Play
-         flavor removes this restricted permission in its manifest overlay. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -92,7 +86,7 @@
         <service
             android:name=".RendererToggleTileService"
             android:exported="true"
-            android:label="GAMA · Renderer"
+            android:label="@string/tile_label"
             android:icon="@drawable/ic_tile"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

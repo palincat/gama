@@ -207,7 +207,7 @@ fun GamaUI(
         }
     }
 
-    var shizukuStatus by remember { mutableStateOf("Checking...") }
+    var shizukuStatus by remember { mutableStateOf(strings["common.checking"].ifEmpty { "Checking..." }) }
     // Shevery exposes the same Shizuku client protocol. This only affects the
     // label shown to the user; command execution stays on the upstream API.
     val shizukuBackendName = remember {

@@ -58,6 +58,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import java.util.Locale
 
 
 
@@ -247,7 +248,11 @@ fun VisualEffectsPanel(
                             color = colors.primaryAccent.copy(alpha = 0.7f)
                         )
                         GlideOptionSelector(
-                            options = listOf("75%", "100%", "125%"),
+                            options = listOf(
+                                LocalStrings.current["appearance.scale_75"].ifEmpty { "75%" },
+                                LocalStrings.current["appearance.scale_100"].ifEmpty { "100%" },
+                                LocalStrings.current["appearance.scale_125"].ifEmpty { "125%" }
+                            ),
                             selectedIndex = uiScale,
                             onOptionSelected = { performHaptic(); onUiScaleChange(it) },
                             colors = colors, modifier = Modifier.fillMaxWidth()
@@ -317,7 +322,7 @@ fun VisualEffectsPanel(
                             onValueChange = { onUserNameChange(it) },
                             placeholder = {
                                 Text(
-                                    "e.g. Alex",
+                                    LocalStrings.current["appearance.your_name_placeholder"].ifEmpty { "e.g. Alex" },
                                     fontFamily = quicksandFontFamily,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = ts.bodyMedium,
@@ -499,7 +504,9 @@ fun RendererPanel(
         oledMode = oledMode, colors = colors,
     ) { _ ->
         CleanTitle(
-            text = LocalStrings.current["renderer.title"].ifEmpty { "RENDERER" },
+            text = LocalStrings.current["renderer.title"]
+                .ifEmpty { "RENDERER" }
+                .uppercase(Locale.ROOT),
             fontSize = if (isLandscape) ts.displayMedium else ts.displayLarge,
             colors = colors
         )

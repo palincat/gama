@@ -19,12 +19,12 @@ import kotlinx.coroutines.delay
  * boot (wireless-debugging handshake, SystemUI init, etc.).
  *
  * On each attempt:
- *  1. Poll for Shizuku for up to 90 s (2 s interval).
+ *  1. Probe root, then poll Shizuku for up to 90 s (2 s interval).
  *  2. If ready → setprop → notify success → return SUCCESS.
  *  3. If not ready after 90 s → return RETRY (WorkManager reschedules).
  *  4. After all retries exhausted WorkManager gives up → notify failure.
  *
- * We deliberately do NOT write "OpenGL" to prefs on failure so the UI keeps
+ * We deliberately do NOT write "OpenGL" to prefs on command failure so the UI keeps
  * showing the correct saved renderer rather than reverting unexpectedly.
  * The renderer pref is only corrected if we can actually verify via Shizuku
  * that the prop is still unset.
@@ -49,11 +49,15 @@ class BootRendererWorker(
             savedRenderer != RendererState.RENDERER_OPENGL
         ) return Result.success()
 
-        // A boot worker must never launch an su approval prompt. It waits only
-        // for an already-authorised Shizuku backend.
-        val shizukuReady = waitForShizuku(timeoutMs = 90_000L)
+        // Root is checked first because it does not depend on Shizuku's daemon
+        // settling after boot. If root is unavailable, wait for an already
+        // authorised Shizuku backend. refreshRootAvailability() is the same
+        // explicit backend probe used by the root access flow; a root manager
+        // that has already granted GAMA access will answer without a prompt.
+        val backendReady = ShizukuHelper.refreshRootAvailability() ||
+            waitForShizuku(timeoutMs = 90_000L)
 
-        if (!shizukuReady) {
+        if (!backendReady) {
             // Not ready yet — if we still have retries, WorkManager will reschedule.
             // Don't corrupt the prefs here; let the retry handle it.
             val isLastAttempt = runAttemptCount >= MAX_ATTEMPTS - 1
@@ -143,7 +147,7 @@ class BootRendererWorker(
                 .replace("%s", renderer) to
                 localizedString(
                     context, "notification", "boot_skipped_body",
-                    "Shizuku was not ready after boot. Open GAMA and switch manually when you want."
+                    "No privileged backend was ready after boot. Open GAMA and switch manually when you want."
                 )
         }
 

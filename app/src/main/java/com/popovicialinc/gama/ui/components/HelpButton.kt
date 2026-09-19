@@ -9,6 +9,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.*
+import com.popovicialinc.gama.tr
 
 /**
  * Contextual help button with information icon
@@ -25,7 +26,7 @@ fun HelpButton(
     ) {
         Icon(
             imageVector = Icons.Filled.Info,
-            contentDescription = "Help",
+            contentDescription = tr("common.help", "Help"),
             tint = color,
             modifier = Modifier.size(24.dp)
         )
@@ -63,7 +64,7 @@ fun HelpDialog(
                 TextButton(
                     onClick = onDismiss
                 ) {
-                    Text("OK")
+                    Text(tr("dialogs.btn_ok", "OK"))
                 }
             },
             modifier = modifier

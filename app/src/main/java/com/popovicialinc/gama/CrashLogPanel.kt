@@ -69,7 +69,12 @@ internal data class GamaCrashEntry(
     val fullText: String     // the entire block text, saved verbatim to .txt
 )
 
-internal fun parseGamaCrashLog(raw: String): List<GamaCrashEntry> {
+internal fun parseGamaCrashLog(
+    raw: String,
+    unknownTime: String,
+    unknownThread: String,
+    noDetails: String
+): List<GamaCrashEntry> {
     if (raw.isBlank()) return emptyList()
     // Split on the separator line "── <timestamp> ──…"
     val sections = raw.split(Regex("(?=── \\d{4}-\\d{2}-\\d{2})"))
@@ -80,17 +85,17 @@ internal fun parseGamaCrashLog(raw: String): List<GamaCrashEntry> {
             val headerLine = lines.firstOrNull()?.trim() ?: return@mapNotNull null
             // Extract timestamp from "── 2025-06-14 03:22:11 ──…"
             val ts = Regex("── (\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})")
-                .find(headerLine)?.groupValues?.get(1) ?: "Unknown time"
+                .find(headerLine)?.groupValues?.get(1) ?: unknownTime
             // Thread line is "Thread: <name>"
             val thread = lines.firstOrNull { it.startsWith("Thread:") }
-                ?.removePrefix("Thread:")?.trim() ?: "unknown"
+                ?.removePrefix("Thread:")?.trim() ?: unknownThread
             // First exception or "at " line as the summary
             val summary = lines
                 .firstOrNull { it.contains("Exception") || it.contains("Error:") || it.startsWith("\tat ") }
                 ?.trim()
                 ?: lines.firstOrNull { it.isNotBlank() && !it.startsWith("──") && !it.startsWith("Thread:") }
                     ?.trim()
-                ?: "No details"
+                ?: noDetails
             GamaCrashEntry(
                 timestamp = ts,
                 thread    = thread,
@@ -102,22 +107,22 @@ internal fun parseGamaCrashLog(raw: String): List<GamaCrashEntry> {
         .sortedByDescending { it.timestamp }
 }
 
-internal fun crashDateFromTimestamp(timestamp: String, fallback: String = "unknown date"): String {
+internal fun crashDateFromTimestamp(timestamp: String, fallback: String): String {
     return timestamp.substringBefore(" ", fallback).ifBlank { fallback }
 }
 
-internal fun crashTimeFromTimestamp(timestamp: String, fallback: String = "unknown time"): String {
+internal fun crashTimeFromTimestamp(timestamp: String, fallback: String): String {
     return timestamp.substringAfter(" ", fallback).ifBlank { fallback }
 }
 
-internal fun crashDateFromMillis(timeMillis: Long, fallback: String = "unknown date"): String {
+internal fun crashDateFromMillis(timeMillis: Long, fallback: String): String {
     return if (timeMillis > 0L) {
         java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
             .format(java.util.Date(timeMillis))
     } else fallback
 }
 
-internal fun crashTimeFromMillis(timeMillis: Long, fallback: String = "unknown time"): String {
+internal fun crashTimeFromMillis(timeMillis: Long, fallback: String): String {
     return if (timeMillis > 0L) {
         java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
             .format(java.util.Date(timeMillis))
@@ -268,6 +273,11 @@ fun CrashLogPanel(
     val ts = LocalTypeScale.current
     val context = LocalContext.current
 
+    // Resolved here because parseGamaCrashLog is a plain helper without composition access.
+    val unknownTimeText = LocalStrings.current["crash_log.unknown_time"].ifEmpty { "Unknown time" }
+    val unknownThreadText = LocalStrings.current["crash_log.unknown_thread"].ifEmpty { "unknown" }
+    val noDetailsText = LocalStrings.current["crash_log.no_details"].ifEmpty { "No details" }
+
     var gamaCrashes by remember { mutableStateOf<List<GamaCrashEntry>>(emptyList()) }
     var rawLogExists by remember { mutableStateOf(false) }
     var systemCrashes by remember { mutableStateOf<List<ShizukuHelper.CrashEntry>>(emptyList()) }
@@ -291,7 +301,7 @@ fun CrashLogPanel(
             } catch (_: Exception) { "" }
         }
         rawLogExists = rawText.isNotEmpty()
-        gamaCrashes = parseGamaCrashLog(rawText)
+        gamaCrashes = parseGamaCrashLog(rawText, unknownTimeText, unknownThreadText, noDetailsText)
 
         // Resolve backend state once per panel open instead of interrogating
         // binder/root state while composing every list section.
@@ -455,7 +465,7 @@ fun CrashLogPanel(
                         sourceLabel = LocalStrings.current["crash_log.app_crash"].ifEmpty { "APP CRASH" } + " • ${entry.thread.uppercase()}",
                         date = crashDateFromTimestamp(entry.timestamp, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
                         time = crashTimeFromTimestamp(entry.timestamp, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
-                        summary = entry.summary.takeUnless { it == "No details" }
+                        summary = entry.summary.takeUnless { it == noDetailsText }
                             ?: LocalStrings.current["crash_log.no_details"].ifEmpty { "No details" },
                         onSave = { onExportCrashLog(entry.fullText, "GAMA_crash_${entry.timestamp.replace(" ", "_").replace(":", "-")}.txt") },
                         onView = { openedEntryKey = "gama:$idx" },
@@ -561,7 +571,7 @@ fun CrashLogPanel(
                             sourceLabel = entry.tag.uppercase(),
                             date = crashDateFromMillis(entry.timeMillis, LocalStrings.current["crash_log.unknown_date"].ifEmpty { "unknown date" }),
                             time = crashTimeFromMillis(entry.timeMillis, LocalStrings.current["crash_log.unknown_time"].ifEmpty { "unknown time" }),
-                            summary = entry.summary.takeUnless { it == "No details" }
+                            summary = entry.summary.takeUnless { it == noDetailsText || it.isBlank() }
                                 ?: LocalStrings.current["crash_log.no_details"].ifEmpty { "No details" },
                             onSave = {
                                 pendingSystemExport = entry.fullText to

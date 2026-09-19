@@ -183,7 +183,16 @@ object ShizukuHelper {
 
     suspend fun runCommand(cmd: String): String = withContext(Dispatchers.IO) {
         if (isRootAvailable()) {
-            return@withContext runRootCommand(cmd)
+            val rootResult = runRootCommand(cmd)
+            if (!rootResult.startsWith("Error", ignoreCase = true)) {
+                return@withContext rootResult
+            }
+
+            // Root authorization can be revoked or disappear while the app is
+            // alive. Do not let a stale positive cache hide a working
+            // Shizuku/Shevery backend; invalidate root and fall through.
+            rootAvailabilityCache = false
+            rootAvailabilityCheckedAtMs = android.os.SystemClock.elapsedRealtime()
         }
         if (!checkBinder() || !checkPermission()) {
             return@withContext "Error: Shizuku not available and no root access"
@@ -438,17 +447,27 @@ object ShizukuHelper {
                 ?.trim()
                 .orEmpty()
             if (current == ime) return
-            onVerboseOutput?.invoke("Restoring original IME after $reason: $ime\n")
+            onVerboseOutput?.invoke(
+                (localizedString(context, "verbose", "restoring_ime", "Restoring original IME after %s: %s")
+                    .replaceFirst("%s", reason).replaceFirst("%s", ime)) + "\n"
+            )
             // `ime set` is the clean path; the settings write is the fallback for ROMs
             // where ime exits non-zero even though shell can update secure settings.
             runCommand("ime set $quoted >/dev/null 2>&1 || settings put secure default_input_method $quoted").also {
-                onVerboseOutput?.invoke("Output: $it\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(context, "verbose", "output", "Output: %s").replace("%s", it) + "\n\n"
+                )
             }
         }
 
-        onVerboseOutput?.invoke("Running: setprop debug.hwui.renderer $propValue\n")
+        onVerboseOutput?.invoke(
+            localizedString(context, "verbose", "running", "Running: %s")
+                .replace("%s", "setprop debug.hwui.renderer $propValue") + "\n"
+        )
         val setpropResult = runCommand("setprop debug.hwui.renderer $propValue")
-        onVerboseOutput?.invoke("Output: $setpropResult\n\n")
+        onVerboseOutput?.invoke(
+            localizedString(context, "verbose", "output", "Output: %s").replace("%s", setpropResult) + "\n\n"
+        )
         if (setpropResult.startsWith("Error", ignoreCase = true) ||
             setpropResult.contains("failed", ignoreCase = true) ||
             setpropResult.contains("permission denied", ignoreCase = true)
@@ -459,7 +478,10 @@ object ShizukuHelper {
             val readBack = runCommand("getprop debug.hwui.renderer").trim()
             if (readBack.equals(propValue, ignoreCase = true)) {
                 onVerboseOutput?.invoke(
-                    "setprop reported an error, but the prop reads back as '$readBack' — continuing.\n\n"
+                    localizedString(
+                        context, "verbose", "setprop_readback_error",
+                        "setprop reported an error, but the prop reads back as '%s' — continuing."
+                    ).replace("%s", readBack) + "\n\n"
                 )
             } else {
                 withContext(Dispatchers.Main) {
@@ -506,8 +528,14 @@ object ShizukuHelper {
                 .filter { pkg -> canForceStopPackage(pkg) }
 
             packages.forEach { pkg ->
-                onVerboseOutput?.invoke("Stopping: $pkg\n")
-                runCommand("am force-stop ${shellQuote(pkg)}").also { onVerboseOutput?.invoke("Output: $it\n") }
+                onVerboseOutput?.invoke(
+                    localizedString(context, "verbose", "stopping", "Stopping: %s").replace("%s", pkg) + "\n"
+                )
+                runCommand("am force-stop ${shellQuote(pkg)}").also {
+                    onVerboseOutput?.invoke(
+                        localizedString(context, "verbose", "output", "Output: %s").replace("%s", it) + "\n"
+                    )
+                }
             }
         }
 
@@ -522,9 +550,15 @@ object ShizukuHelper {
             // so a refused force-stop is visible instead of silently ignored.
             val cmd = "am force-stop ${shellQuote(originalImePackage)}; sleep 0.5; ime set ${shellQuote(originalIme ?: "")} >/dev/null 2>&1"
             val out = runCommand(cmd)
-            onVerboseOutput?.invoke("Running: $cmd\nOutput: $out\n\n")
+            onVerboseOutput?.invoke(
+                localizedString(context, "verbose", "running", "Running: %s").replace("%s", cmd) + "\n" +
+                    localizedString(context, "verbose", "output", "Output: %s").replace("%s", out) + "\n\n"
+            )
             if (out.startsWith("Error", ignoreCase = true)) {
-                onVerboseOutput?.invoke("Keyboard restart failed: $out\n")
+                onVerboseOutput?.invoke(
+                    localizedString(context, "verbose", "keyboard_restart_failed", "Keyboard restart failed: %s")
+                        .replace("%s", out) + "\n"
+                )
             }
         } else {
             restoreOriginalImeIfNeeded("renderer switch")
@@ -539,20 +573,41 @@ object ShizukuHelper {
             if (activeLauncher.isNotBlank() && !xiaomiFamilyDevice && activeLauncher != "com.miui.home") {
                 val stopLauncher = "am force-stop ${shellQuote(activeLauncher)}"
                 val stopOutput = runCommand(stopLauncher)
-                onVerboseOutput?.invoke("Running: $stopLauncher\nOutput: $stopOutput\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(context, "verbose", "running", "Running: %s").replace("%s", stopLauncher) + "\n" +
+                        localizedString(context, "verbose", "output", "Output: %s").replace("%s", stopOutput) + "\n\n"
+                )
                 if (stopOutput.startsWith("Error", ignoreCase = true)) {
-                    onVerboseOutput?.invoke("Launcher restart failed ($activeLauncher): $stopOutput\n")
+                    onVerboseOutput?.invoke(
+                        (localizedString(
+                            context, "verbose", "launcher_restart_failed",
+                            "Launcher restart failed (%s): %s"
+                        ).replaceFirst("%s", activeLauncher).replaceFirst("%s", stopOutput)) + "\n"
+                    )
                 } else {
                     // Force-stop alone relies on the system deciding when to recreate
                     // HOME. Explicitly launching HOME makes the restart immediate.
                     val launchHome = "am start -a android.intent.action.MAIN -c android.intent.category.HOME"
                     val launchOutput = runCommand(launchHome)
-                    onVerboseOutput?.invoke("Running: $launchHome\nOutput: $launchOutput\n\n")
+                    onVerboseOutput?.invoke(
+                        localizedString(context, "verbose", "running", "Running: %s").replace("%s", launchHome) + "\n" +
+                            localizedString(context, "verbose", "output", "Output: %s").replace("%s", launchOutput) + "\n\n"
+                    )
                 }
             } else if (xiaomiFamilyDevice) {
-                onVerboseOutput?.invoke("Launcher restart skipped on Xiaomi / HyperOS for safety.\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(
+                        context, "verbose", "launcher_skipped_xiaomi",
+                        "Launcher restart skipped on Xiaomi / HyperOS for safety."
+                    ) + "\n\n"
+                )
             } else {
-                onVerboseOutput?.invoke("Launcher restart skipped: could not resolve the active HOME app.\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(
+                        context, "verbose", "launcher_skipped_no_home",
+                        "Launcher restart skipped: could not resolve the active HOME app."
+                    ) + "\n\n"
+                )
             }
             val restartPrefs = context.getSharedPreferences("gama_prefs", Context.MODE_PRIVATE)
             val now = android.os.SystemClock.elapsedRealtime()
@@ -561,12 +616,23 @@ object ShizukuHelper {
                 val systemUiCommand = "am force-stop com.android.systemui"
                 val systemUiOutput = runCommand(systemUiCommand)
                 restartPrefs.edit().putLong("last_systemui_restart_uptime", now).apply()
-                onVerboseOutput?.invoke("Running: $systemUiCommand\nOutput: $systemUiOutput\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(context, "verbose", "running", "Running: %s").replace("%s", systemUiCommand) + "\n" +
+                        localizedString(context, "verbose", "output", "Output: %s").replace("%s", systemUiOutput) + "\n\n"
+                )
                 if (systemUiOutput.startsWith("Error", ignoreCase = true)) {
-                    onVerboseOutput?.invoke("System UI restart failed: $systemUiOutput\n")
+                    onVerboseOutput?.invoke(
+                        localizedString(context, "verbose", "systemui_restart_failed", "System UI restart failed: %s")
+                            .replace("%s", systemUiOutput) + "\n"
+                    )
                 }
             } else {
-                onVerboseOutput?.invoke("System UI restart skipped: 15-second cooldown is active.\n\n")
+                onVerboseOutput?.invoke(
+                    localizedString(
+                        context, "verbose", "systemui_skipped_cooldown",
+                        "System UI restart skipped: 15-second cooldown is active."
+                    ) + "\n\n"
+                )
             }
         }
 
@@ -879,7 +945,7 @@ object ShizukuHelper {
             if (!isRelevant && !tagLine.contains("system", ignoreCase = true)) continue
             val shortSummary = body.lines()
                 .firstOrNull { it.contains("Exception") || it.contains("Error") || it.contains("at ") }
-                ?.trim() ?: body.lines().firstOrNull { it.isNotBlank() }?.trim() ?: "No details"
+                ?.trim() ?: body.lines().firstOrNull { it.isNotBlank() }?.trim() ?: ""
             entries.add(CrashEntry(
                 tag        = tag,
                 timeMillis = timeMillis,

@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">GAMA</string>
-    <string name="tile_label">GAMA</string>
+    <string name="tile_label">GAMA · Renderer</string>
 </resources>

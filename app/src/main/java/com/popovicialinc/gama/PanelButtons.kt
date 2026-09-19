@@ -132,6 +132,7 @@ fun BackArrowButton(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val backContentDescription = tr("common.back", "Back")
     val isSmallScreen = LocalConfiguration.current.screenWidthDp.dp < 360.dp
     val buttonSize = if (isSmallScreen) 48.dp else 56.dp
     val iconSize = if (isSmallScreen) 22.dp else 26.dp
@@ -222,7 +223,7 @@ fun BackArrowButton(
                     glowRadius = 9.dp
                 )
                 .border(borderWidthDp, borderColor, CircleShape)
-                .semantics { contentDescription = "Back" }
+                .semantics { contentDescription = backContentDescription }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
@@ -503,6 +504,7 @@ fun PanelBackButton(
     val currentOnClick by rememberUpdatedState(onClick)
     val btnSize  = if (isSmallScreen) 48.dp else 52.dp
     val iconSize = if (isSmallScreen) 22.dp else 26.dp
+    val backContentDescription = tr("common.back", "Back")
 
     // Static glow alpha — back button is shown inside already-open panels;
     // running an infinite transition here would tick every frame for the
@@ -602,7 +604,7 @@ fun PanelBackButton(
                     colors.primaryAccent.copy(alpha = borderAlphaVal),
                     RoundedCornerShape(28.dp)
                 )
-                .semantics { contentDescription = "Back" }
+                .semantics { contentDescription = backContentDescription }
                 .floatingButtonGesture(
                     enabled = enabled,
                     isLeftSide = isLeftSide,
