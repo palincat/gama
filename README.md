@@ -11,7 +11,7 @@
   <a href="https://www.android.com/"><img src="https://img.shields.io/badge/Android-FFB3BA?style=for-the-badge&logo=android&logoColor=333" /></a>&nbsp;<a href="https://news.samsung.com/global/galaxy-s23-series"><img src="https://img.shields.io/badge/Galaxy_S23-FFDFBA?style=for-the-badge&logo=samsung&logoColor=333" /></a>&nbsp;<a href="https://www.samsung.com/us/support/answer/ANS10004612/"><img src="https://img.shields.io/badge/One_UI_7-FFFFBA?style=for-the-badge&logoColor=333" /></a>&nbsp;<a href="https://github.com/palincat/gama"><img src="https://img.shields.io/badge/Secure-BAFFC9?style=for-the-badge&logoColor=333" /></a>&nbsp;<a href="https://discord.gg/YYXSedBAS9"><img src="https://img.shields.io/badge/Discord-BAE1FF?style=for-the-badge&logo=discord&logoColor=333" /></a>&nbsp;<a href="https://github.com/popovicialinc/gama/releases"><img src="https://img.shields.io/github/downloads/popovicialinc/gama/total?style=for-the-badge&label=Downloads&color=E8BAFF&labelColor=C98FE8&logoColor=000" /></a>
 </p>
 
-**Graphics API Manager for Android (GAMA) is an application that lets you switch the GPU rendering API on your Android device — no root required (though rooted devices can use the root backend automatically, no Shizuku needed).**
+**Graphics API Manager for Android (GAMA) is an application that lets you switch the GPU rendering API on your Android device - no root required (though rooted devices can use the root backend automatically, no Shizuku needed).**
 
 While optimized for the Samsung Galaxy S23 lineup, this project is compatible with any modern Android device and aims to provide:
 
@@ -61,8 +61,8 @@ While optimized for the Samsung Galaxy S23 lineup, this project is compatible wi
 * [**The latest .apk of GAMA**](https://github.com/popovicialinc/gama/releases/latest)
 * [**Shizuku**](https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api) (recommended)
   * Install it from its official source, then start its service.
-* **Shevery** (optional) — GAMA recognizes [Shevery](https://github.com/HmnDev-Tech/shevery), a Shizuku-compatible fork, and will open it from the help flow when installed. GAMA continues to use the standard Shizuku client protocol and does not download or require Shevery. If both managers are present, GAMA prefers official Shizuku.
-* **Rooted?** (Magisk / KernelSU) — GAMA detects root automatically and uses it as a silent backend. No Shizuku needed at all on rooted devices.
+* **Shevery** (optional) - GAMA recognizes [Shevery](https://github.com/HmnDev-Tech/shevery), a Shizuku-compatible fork, and will open it from the help flow when installed. GAMA continues to use the standard Shizuku client protocol and does not download or require Shevery. If both managers are present, GAMA prefers official Shizuku.
+* **Rooted?** (Magisk / KernelSU) - GAMA detects root automatically and uses it as a silent backend. No Shizuku needed at all on rooted devices.
 
 ## **Installation & Usage**
 
@@ -107,7 +107,7 @@ Open **Library → Tasker → Set up** in GAMA, copy the generated token, then f
 <details>
 <summary><b>🔸 Some apps won't run under Vulkan</b></summary>
 <br>
-A great majority of apps installed on your device will run under Vulkan flawlessly. If an app reverts to OpenGL, it's normal behavior and there's nothing to worry about — the app simply doesn't like Vulkan, and it probably also runs under OpenGL on S24/S25/S26-series!
+A great majority of apps installed on your device will run under Vulkan flawlessly. If an app reverts to OpenGL, it's normal behavior and there's nothing to worry about - the app simply doesn't like Vulkan, and it probably also runs under OpenGL on S24/S25/S26-series!
 <br>
 <br>
 </details>
