@@ -203,7 +203,7 @@
     "detail_unknown_request": "Cerere de redare necunoscută."
   },
   "resources": {
-    "title": "RESURSE"
+    "title": "Bibliotecă"
   },
   "system": {
     "title": "SISTEM",
@@ -501,7 +501,7 @@
     "egg_control_room": "SALA DE CONTROL\nA LUCRURILOR INUTILE",
     "egg_tagline": "O apăsare lungă. Un mic secret.\nZero permisiuni în plus.",
     "egg_secret": "Nu ar fi trebuit să găsești asta.\n(Speram că o vei face.)",
-    "egg_return": "ÎNAPOI LA GAMA",
+    "egg_return": "ÎNAPOI LA GAMA"
   },
   "widget": {
     "renderer_label": "REDARE",

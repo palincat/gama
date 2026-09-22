@@ -203,7 +203,7 @@
     "detail_unknown_request": "Solicitação de renderizador desconhecida."
   },
   "resources": {
-    "title": "RECURSOS"
+    "title": "Biblioteca"
   },
   "system": {
     "title": "SISTEMA",
@@ -501,7 +501,7 @@
     "egg_control_room": "A SALA DE CONTROLE\nDO DESNECESSÁRIO",
     "egg_tagline": "Um toque longo. Um pequeno segredo.\nZero permissões extras.",
     "egg_secret": "Você nunca deveria ter encontrado isso.\n(Torcíamos para que encontrasse.)",
-    "egg_return": "VOLTAR PARA A GAMA",
+    "egg_return": "VOLTAR PARA A GAMA"
   },
   "widget": {
     "renderer_label": "RENDERIZADOR",

@@ -203,7 +203,7 @@
     "detail_unknown_request": "Yêu cầu trình render không xác định."
   },
   "resources": {
-    "title": "TÀI NGUYÊN"
+    "title": "Tài nguyên"
   },
   "system": {
     "title": "HỆ THỐNG",
@@ -501,7 +501,7 @@
     "egg_control_room": "PHÒNG ĐIỀU KHIỂN\nKHÔNG CẦN THIẾT",
     "egg_tagline": "Một lần nhấn giữ. Một bí mật nhỏ.\nKhông thêm quyền nào cả.",
     "egg_secret": "Bạn vốn không nên tìm thấy cái này.\n(Nhưng chúng tôi mong bạn sẽ tìm ra.)",
-    "egg_return": "QUAY LẠI GAMA",
+    "egg_return": "QUAY LẠI GAMA"
   },
   "widget": {
     "renderer_label": "TRÌNH RENDER",

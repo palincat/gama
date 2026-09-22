@@ -22,23 +22,14 @@ jobs:
       - name: setup gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: assemble GitHub debug
-        run: ./gradlew :app:assembleGithubDebug --no-daemon --stacktrace
-
-      - name: assemble Play debug
-        run: ./gradlew :app:assemblePlayDebug --no-daemon --stacktrace
+      - name: assemble debug
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: unit tests
-        run: ./gradlew :app:testGithubDebugUnitTest --no-daemon --stacktrace
-
-      - name: Play unit tests
-        run: ./gradlew :app:testPlayDebugUnitTest --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: lint
-        run: ./gradlew :app:lintGithubDebug --no-daemon --stacktrace
-
-      - name: Play lint
-        run: ./gradlew :app:lintPlayDebug --no-daemon --stacktrace
+        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
 
   emulator-smoke:
     name: emulator API ${{ matrix.api-level }}
@@ -67,5 +58,5 @@ jobs:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           profile: Pixel_2
-          script: ./gradlew :app:connectedGithubDebugAndroidTest --no-daemon --stacktrace
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
           disable-animations: true

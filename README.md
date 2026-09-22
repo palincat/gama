@@ -95,14 +95,7 @@ Open **Library → Tasker → Set up** in GAMA, copy the generated token, then f
   <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/2.png" width="250">
   <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/3.png" width="250">
   <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/4.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/11.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/12.png" width="250">
   <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/5.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/6.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/7.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/8.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/9.png" width="250">
-  <img src="https://raw.githubusercontent.com/popovicialinc/gama/main/!assets/Repository%20Stuff/10.png" width="250">
 </p>
 
 <br>

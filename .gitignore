@@ -17,8 +17,12 @@ keystore.properties
 
 # Generated release outputs and local compiler diagnostics
 /app/release/
-/.kotlin/errors/
+/.kotlin/
 *.backup
+*.hprof
 
 # Release archives do not belong in source packages.
 /app/src/main/java/com/popovicialinc/gama/Source Code v1.4.zip
+
+# Local backup of superseded README screenshots.
+/!assets/Repository Stuff/old_screenshots/

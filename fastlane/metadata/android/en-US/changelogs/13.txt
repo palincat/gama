@@ -1,0 +1,12 @@
+GAMA v1.4
+
+- Four languages: English, Português (Brasil), Română, Tiếng Việt — switch anytime in Settings
+- Settings search: find any toggle, slider, or option instantly
+- Verified renderer switching with action history (what changed, when, and from where)
+- Tasker automation rebuilt with secure token-based setup
+- Haptics overhaul: six feedback categories with individual toggles and strength
+- New Matrix rain effect, expanded particles and glow
+- Unified panel design, better landscape and large-screen layouts
+- Removed the home screen widget and the separate Vulkan/OpenGL/Doze Quick Settings tiles
+
+Important: v1.4 is signed with a new key. Export a backup in v1.3, then uninstall it and install v1.4 (backups restore fine).

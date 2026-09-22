@@ -131,7 +131,10 @@ object LocalizationManager {
                     context.assets.open("$TRANSLATIONS_DIR/$DEFAULT_CODE.json")
                         .bufferedReader().readText()
                 } catch (_: Exception) { "{}" }
-                JSONObject(raw).also { cachedEnglish = it }
+                runCatching { JSONObject(raw) }
+                    .onFailure { android.util.Log.e(TAG, "Failed to parse $DEFAULT_CODE.json: ${it.message}") }
+                    .getOrDefault(JSONObject())
+                    .also { cachedEnglish = it }
             }
 
             val targetJson: JSONObject = if (code == DEFAULT_CODE) {

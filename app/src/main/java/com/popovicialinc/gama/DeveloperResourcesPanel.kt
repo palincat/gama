@@ -59,6 +59,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import java.util.Locale
 
 
 @Composable
@@ -190,7 +191,9 @@ fun ResourcesPanel(
         rootExitCascade = true,
     ) { scrollState ->
         CleanTitle(
-            text = LocalStrings.current["resources.title"].ifEmpty { "LIBRARY" },
+            text = LocalStrings.current["resources.title"]
+                .ifEmpty { "Library" }
+                .uppercase(Locale.ROOT),
             fontSize = if (isLandscape) ts.displayMedium else ts.displayLarge,
             colors = colors, scrollState = scrollState
         )

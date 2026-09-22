@@ -203,7 +203,7 @@
     "detail_unknown_request": "Unknown renderer request."
   },
   "resources": {
-    "title": "RESOURCES"
+    "title": "Library"
   },
   "system": {
     "title": "SYSTEM",
@@ -501,7 +501,7 @@
     "egg_control_room": "THE UNNECESSARY\nCONTROL ROOM",
     "egg_tagline": "One long press. One small secret.\nZero extra permissions.",
     "egg_secret": "You were never supposed to find this.\n(We hoped you would.)",
-    "egg_return": "RETURN TO GAMA",
+    "egg_return": "RETURN TO GAMA"
   },
   "widget": {
     "renderer_label": "RENDERER",
