@@ -2,30 +2,30 @@ name: announce release
 on:
   release:
     types: [published]
+  # Re-announce an existing release from the current workflow (a release-triggered
+  # run uses the workflow file as it was at the tag's commit).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to announce"
+        required: true
 
 jobs:
   discord-announcement:
     runs-on: ubuntu-latest
     steps:
-      # The release link is posted twice on purpose: as plain message text and as
-      # the embed title. Both are tappable in the Discord mobile app, whereas a link
-      # inside an embed body (what the old action produced) was not reliably tappable.
+      # Plain message with the link in the text. Links inside a Discord embed were
+      # not tappable in the Discord mobile app, so no embed is used.
       - name: notify discord
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          TAG: ${{ github.event.release.tag_name }}
-          URL: ${{ github.event.release.html_url }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          URL: ${{ github.event.release.html_url || format('https://github.com/{0}/releases/tag/{1}', github.repository, inputs.tag) }}
         run: |
           jq -n --arg tag "$TAG" --arg url "$URL" '{
             username: "GAMA Engine",
             avatar_url: "https://raw.githubusercontent.com/popovicialinc/gama/main/%21assets/icon.png",
             allowed_mentions: { parse: [] },
-            content: ("🚀 A new version of GAMA is live!\n" + $url),
-            embeds: [{
-              title: ("GAMA " + $tag),
-              url: $url,
-              description: ("📱 **Version:** `" + $tag + "`\n📥 Tap the title to download the update"),
-              color: 5793266
-            }]
+            content: ("🚀 A new version of GAMA is live!\n\n📱 **Version:** `" + $tag + "`\n\n📥 **Download the update here:**\n" + $url)
           }' > payload.json
           curl -fsS -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"
