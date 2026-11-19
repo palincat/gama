@@ -57,6 +57,6 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
-          profile: Pixel_2
+          profile: pixel_2
           script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
           disable-animations: true
