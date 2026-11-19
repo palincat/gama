@@ -7,17 +7,25 @@ jobs:
   discord-announcement:
     runs-on: ubuntu-latest
     steps:
+      # The release link is posted twice on purpose: as plain message text and as
+      # the embed title. Both are tappable in the Discord mobile app, whereas a link
+      # inside an embed body (what the old action produced) was not reliably tappable.
       - name: notify discord
-        uses: appleboy/discord-action@master
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "GAMA Engine"
-          avatar_url: "https://raw.githubusercontent.com/popovicialinc/gama/main/%21assets/icon.png"
-          color: "#5865F2"
-          message: |
-            🚀 A new version of GAMA is live!
-
-            📱 **Version:** `${{ github.event.release.tag_name }}`
-
-            📥 **Download the update here:**
-            ${{ github.event.release.html_url }}
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          TAG: ${{ github.event.release.tag_name }}
+          URL: ${{ github.event.release.html_url }}
+        run: |
+          jq -n --arg tag "$TAG" --arg url "$URL" '{
+            username: "GAMA Engine",
+            avatar_url: "https://raw.githubusercontent.com/popovicialinc/gama/main/%21assets/icon.png",
+            allowed_mentions: { parse: [] },
+            content: ("🚀 A new version of GAMA is live!\n" + $url),
+            embeds: [{
+              title: ("GAMA " + $tag),
+              url: $url,
+              description: ("📱 **Version:** `" + $tag + "`\n📥 Tap the title to download the update"),
+              color: 5793266
+            }]
+          }' > payload.json
+          curl -fsS -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"
