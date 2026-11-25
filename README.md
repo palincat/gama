@@ -13,7 +13,7 @@
 
 **Graphics API Manager for Android (GAMA) is an application that lets you switch the GPU rendering API on your Android device - no root required (though rooted devices can use the root backend automatically, no Shizuku needed).**
 
-While optimized for the Samsung Galaxy S23 lineup, this project is compatible with any modern Android device and aims to provide:
+While optimized for the Samsung Galaxy S23 lineup, this project is compatible with any modern Android device (Android 10 or newer, including Pixel, Xiaomi and others) and aims to provide:
 
 * ❄️ **Lower-running temps**
 * 🔋 **An improved battery life**
@@ -25,6 +25,11 @@ While optimized for the Samsung Galaxy S23 lineup, this project is compatible wi
     * Vulkan support can vary between Android devices and One UI versions, so performance may differ, especially on versions below One UI 7 (Android 15). You’re always welcome to give it a try though! If something doesn’t work as expected, switch back to OpenGL in GAMA; a reboot may also restore your saved Vulkan choice when Shizuku or root is available.
     * If your device is not listed, please kindly follow [this link](https://forms.gle/uHzLaHNzVzKyLCBq9) where you will be able to fill out a form - The relevant, collected data will be added to the [spreadsheet](https://docs.google.com/spreadsheets/d/1zKtPPWdNBmzHyQXrv9Fv_pXrbanQdjlaYAiLQOJvfo0/edit?usp=sharing)
     * All data is user-reported.
+* ✅ **Device support**
+    * GAMA is not limited to Samsung or Xiaomi. It works on any Android 10+ device (Pixel included) with Shizuku or root.
+    * Only the GPUWatch shortcut is Samsung-specific (requires Game Booster / Game Tools).
+    * On Xiaomi / Redmi / POCO / MIUI / HyperOS, the optional launcher restart is skipped for safety.
+    * Whether Vulkan actually works well depends on your GPU driver and ROM, so results vary by device.
 * ☕ If you want to support the development of GAMA, [**consider donating**](https://buymeacoffee.com/popovicialinc)!
 
 **Stargazers over time**
