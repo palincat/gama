@@ -21,9 +21,9 @@ While optimized for the Samsung Galaxy S23 lineup, this project is compatible wi
 * 🛠️ **User-friendliness** - Simple yet beautiful UI to switch APIs without complex terminal commands
 
 **Resources**
-* 📱 [**Does Vulkan work on my device?**](https://docs.google.com/spreadsheets/d/1zKtPPWdNBmzHyQXrv9Fv_pXrbanQdjlaYAiLQOJvfo0/edit?usp=sharing)
+* 📱 [**Does Vulkan work on my device?**](https://docs.google.com/spreadsheets/d/1qtun4FVybyd9PCgUfsYBj9ZvaZOFAxTrrGU2Pt1wliE/edit?usp=sharing)
     * Vulkan support can vary between Android devices and One UI versions, so performance may differ, especially on versions below One UI 7 (Android 15). You’re always welcome to give it a try though! If something doesn’t work as expected, switch back to OpenGL in GAMA; a reboot may also restore your saved Vulkan choice when Shizuku or root is available.
-    * If your device is not listed, please kindly follow [this link](https://forms.gle/uHzLaHNzVzKyLCBq9) where you will be able to fill out a form - The relevant, collected data will be added to the [spreadsheet](https://docs.google.com/spreadsheets/d/1zKtPPWdNBmzHyQXrv9Fv_pXrbanQdjlaYAiLQOJvfo0/edit?usp=sharing)
+    * If your device is not listed, please kindly follow [this link](https://forms.gle/uHzLaHNzVzKyLCBq9) where you will be able to fill out a form - The relevant, collected data will be added to the [spreadsheet](https://docs.google.com/spreadsheets/d/1qtun4FVybyd9PCgUfsYBj9ZvaZOFAxTrrGU2Pt1wliE/edit?usp=sharing)
     * All data is user-reported.
 * ✅ **Device support**
     * GAMA is not limited to Samsung or Xiaomi. It works on any Android 10+ device (Pixel included) with Shizuku or root.
